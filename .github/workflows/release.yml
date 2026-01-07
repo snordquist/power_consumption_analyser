@@ -17,12 +17,10 @@ jobs:
         run: |
           test -d custom_components/power_consumption_analyser
           test -f custom_components/power_consumption_analyser/manifest.json
-      - name: Create ZIP asset (domain folder at root)
+      - name: Create ZIP asset (files at root)
         run: |
-          mkdir -p stage/power_consumption_analyser
-          rsync -a custom_components/power_consumption_analyser/ stage/power_consumption_analyser/
-          cd stage
-          zip -r ../power_consumption_analyser.zip power_consumption_analyser \
+          cd custom_components/power_consumption_analyser
+          zip -r ../../power_consumption_analyser.zip * \
             -x "**/__pycache__/**" "**/*.pyc" "**/.DS_Store" "**/.git/**"
       - name: Upload release asset
         uses: softprops/action-gh-release@v1
