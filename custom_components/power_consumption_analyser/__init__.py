@@ -50,6 +50,10 @@ class PCAData:
         # energy meter mappings
         self.energy_meters_by_circuit: Dict[str, List[str]] = {}
         self.meter_to_circuit: Dict[str, str] = {}
+        # label-based meters and label tracking
+        self.label_meters: Set[str] = set()
+        self.energy_label_id: Optional[str] = None
+        self.devices_with_label: Set[str] = set()
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
@@ -108,8 +112,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if m not in data.energy_meters_by_circuit[cid]:
             data.energy_meters_by_circuit[cid].append(m)
 
-    # Ensure devices for mapped energy meters carry the 'energy_meter' label
+    # Ensure devices for mapped energy meters carry the 'EnergyMeter' label
     await _ensure_labels_for_energy_meters(hass, list(data.meter_to_circuit.keys()))
+
+    # Discover EnergyMeter label id and initialize label-based meters
+    _init_label_tracking(hass, data)
 
     hass.data[DOMAIN] = data
 
@@ -261,30 +268,32 @@ async def _calc_tracked_power(hass: HomeAssistant, data: PCAData) -> float:
     return round(total, 2)
 
 async def _ensure_labels_for_energy_meters(hass: HomeAssistant, entity_ids: List[str]) -> None:
-    """Ensure the device for each entity has the 'energy_meter' label."""
+    """Ensure the device for each entity has the 'EnergyMeter' label."""
     if not entity_ids:
         return
     ent_reg = er.async_get(hass)
     dev_reg = dr.async_get(hass)
     lbl_reg = lr.async_get(hass)
 
-    # Find or create the label entry by name
+    # Find or create the new label by name and detect the old one for cleanup
     energy_label = None
+    old_energy_label = None
     try:
-        # Attempt to find existing label named 'energy_meter'
         for lbl in getattr(lbl_reg, "labels", {}).values():
-            if getattr(lbl, "name", None) == "energy_meter":
+            name = getattr(lbl, "name", None)
+            if name == "EnergyMeter":
                 energy_label = lbl
-                break
+            elif name == "energy_meter":
+                old_energy_label = lbl
         if energy_label is None:
-            # Fallback: create if supported
             create = getattr(lbl_reg, "async_create", None)
             if create:
-                energy_label = create(name="energy_meter")
+                energy_label = create(name="EnergyMeter")
     except Exception as ex:
         _LOGGER.debug("Label registry access failed: %s", ex)
 
-    label_id: Optional[str] = getattr(energy_label, "id", None) if energy_label else None
+    new_label_id: Optional[str] = getattr(energy_label, "id", None) if energy_label else None
+    old_label_id: Optional[str] = getattr(old_energy_label, "id", None) if old_energy_label else None
 
     for eid in entity_ids:
         ent = ent_reg.async_get(eid)
@@ -295,8 +304,103 @@ async def _ensure_labels_for_energy_meters(hass: HomeAssistant, entity_ids: List
             continue
         try:
             current_labels: Set[str] = set(getattr(dev, "labels", set()) or set())
-            if label_id and label_id not in current_labels:
-                current_labels.add(label_id)
+            changed = False
+            if new_label_id and new_label_id not in current_labels:
+                current_labels.add(new_label_id)
+                changed = True
+            if old_label_id and old_label_id in current_labels:
+                current_labels.remove(old_label_id)
+                changed = True
+            if changed:
                 dev_reg.async_update_device(dev.id, labels=current_labels)
         except Exception as ex:
             _LOGGER.debug("Failed to update labels for device %s: %s", dev.id, ex)
+
+def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
+    """Initialize EnergyMeter label id, seed label_meters, and subscribe to device updates."""
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    lbl_reg = lr.async_get(hass)
+
+    # Find label id for 'EnergyMeter'
+    label_id = None
+    try:
+        for lbl in getattr(lbl_reg, "labels", {}).values():
+            if getattr(lbl, "name", None) == "EnergyMeter":
+                label_id = getattr(lbl, "id", None)
+                break
+    except Exception as ex:
+        _LOGGER.debug("Label registry enumeration failed: %s", ex)
+    data.energy_label_id = label_id
+
+    # Seed meters from devices carrying the label
+    added_entities: List[str] = []
+    if label_id:
+        try:
+            for device in getattr(dev_reg, "devices", {}).values():
+                lbls: Set[str] = set(getattr(device, "labels", set()) or set())
+                if label_id in lbls:
+                    data.devices_with_label.add(device.id)
+                    for ent in ent_reg.async_entries_for_device(device.id):
+                        if ent.domain == "sensor":
+                            eid = ent.entity_id
+                            if eid not in data.label_meters:
+                                data.label_meters.add(eid)
+                                added_entities.append(eid)
+        except Exception as ex:
+            _LOGGER.debug("Seeding label meters failed: %s", ex)
+    if added_entities:
+        hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": added_entities, "removed": []})
+
+    # Subscribe to device registry updates to react to label changes
+    async def _on_device_registry_updated(event):
+        device_id = event.data.get("device_id")
+        action = event.data.get("action")
+        if not device_id:
+            return
+        device = dev_reg.async_get(device_id)
+        if action == "remove" or not device:
+            # device removed
+            removed = []
+            if device_id in data.devices_with_label:
+                data.devices_with_label.discard(device_id)
+                # remove all sensor entities for that device from label_meters
+                for ent in ent_reg.async_entries_for_device(device_id):
+                    if ent.domain == "sensor" and ent.entity_id in data.label_meters:
+                        data.label_meters.discard(ent.entity_id)
+                        removed.append(ent.entity_id)
+            if removed:
+                hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": [], "removed": removed})
+            return
+        # update/create: check if label status changed
+        has_label = False
+        if data.energy_label_id:
+            try:
+                has_label = data.energy_label_id in (getattr(device, "labels", set()) or set())
+            except Exception:
+                has_label = False
+        before = device_id in data.devices_with_label
+        if has_label and not before:
+            # label added
+            data.devices_with_label.add(device_id)
+            added = []
+            for ent in ent_reg.async_entries_for_device(device_id):
+                if ent.domain == "sensor":
+                    eid = ent.entity_id
+                    if eid not in data.label_meters:
+                        data.label_meters.add(eid)
+                        added.append(eid)
+            if added:
+                hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": added, "removed": []})
+        elif not has_label and before:
+            # label removed
+            data.devices_with_label.discard(device_id)
+            removed = []
+            for ent in ent_reg.async_entries_for_device(device_id):
+                if ent.domain == "sensor" and ent.entity_id in data.label_meters:
+                    data.label_meters.discard(ent.entity_id)
+                    removed.append(ent.entity_id)
+            if removed:
+                hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": [], "removed": removed})
+
+    hass.bus.async_listen("device_registry_updated", _on_device_registry_updated)

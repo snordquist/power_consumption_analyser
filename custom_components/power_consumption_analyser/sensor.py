@@ -17,6 +17,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities = [
         TrackedPowerSumSensor(data),
         CalculatedUntrackedPowerSensor(data),
+        TrackedCoverageSensor(data),
+        TrackedToUntrackedRatioSensor(data),
+        MeterCountSensor(data),
+        LabelMeterCountSensor(data),
+        MappedMeterCountSensor(data),
+        UnavailableMeterCountSensor(data),
         AnalysisStatusSensor(data),
     ]
     async_add_entities(entities, True)
@@ -48,7 +54,9 @@ class TrackedPowerSumSensor(BasePCASensor):
     @property
     def native_value(self) -> Optional[float]:
         total = 0.0
-        for eid in list(self._meter_entities):
+        # Combine circuit-linked meters and label-based meters
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        for eid in list(meter_ids):
             state = self.hass.states.get(eid)
             try:
                 v = float(state.state) if state and state.state not in ("unknown", "unavailable") else 0.0
@@ -76,8 +84,14 @@ class TrackedPowerSumSensor(BasePCASensor):
                 self._refresh_listeners()
                 self.async_schedule_update_ha_state()
 
+        @callback
+        def _on_label_meters_changed(event):
+            self._refresh_listeners()
+            self.async_schedule_update_ha_state()
+
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_label_meters_changed))
 
     def _refresh_listeners(self) -> None:
         for unsub in self._unsub_listeners:
@@ -90,8 +104,10 @@ class TrackedPowerSumSensor(BasePCASensor):
         def _state_change_handler(event):
             self.async_schedule_update_ha_state()
 
-        if self._meter_entities:
-            unsub = async_track_state_change_event(self.hass, list(self._meter_entities), _state_change_handler)
+        # Listen for state changes of both circuit-linked and label-based meters
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        if meter_ids:
+            unsub = async_track_state_change_event(self.hass, list(meter_ids), _state_change_handler)
             self._unsub_listeners.append(unsub)
 
 class CalculatedUntrackedPowerSensor(BasePCASensor):
@@ -118,7 +134,9 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
         except Exception:
             home_w = 0.0
         tracked = 0.0
-        for eid in list(self._meter_entities):
+        # Combine meters
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        for eid in list(meter_ids):
             st = self.hass.states.get(eid)
             try:
                 v = float(st.state) if st and st.state not in ("unknown", "unavailable") else 0.0
@@ -147,8 +165,14 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
                 self._refresh_listeners()
                 self.async_schedule_update_ha_state()
 
+        @callback
+        def _on_label_meters_changed(event):
+            self._refresh_listeners()
+            self.async_schedule_update_ha_state()
+
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_label_meters_changed))
 
     def _refresh_listeners(self) -> None:
         for unsub in self._unsub_listeners:
@@ -156,7 +180,7 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
         self._unsub_listeners.clear()
         if not self.hass:
             return
-        entities = set(self._meter_entities)
+        entities = set(self._meter_entities) | set(self.data.label_meters)
         if self._home_entity:
             entities.add(self._home_entity)
 
@@ -180,3 +204,295 @@ class AnalysisStatusSensor(BasePCASensor):
         if self.data.step_active and self.data.current_circuit:
             return f"active:{self.data.current_circuit}"
         return "idle"
+
+class TrackedCoverageSensor(BasePCASensor):
+    _attr_name = "Tracked Coverage"
+    _attr_native_unit_of_measurement = "%"
+
+    def __init__(self, data: PCAData):
+        super().__init__(data)
+        self._home_entity: Optional[str] = data.baseline_sensors.get("home_consumption") if data.baseline_sensors else None
+        self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
+        self._unsub_listeners: List[Callable[[], None]] = []
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_tracked_coverage_percent"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        if not self._home_entity:
+            return None
+        home_state = self.hass.states.get(self._home_entity)
+        try:
+            home_w = float(home_state.state) if home_state and home_state.state not in ("unknown", "unavailable") else 0.0
+        except Exception:
+            home_w = 0.0
+        tracked = 0.0
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        for eid in meter_ids:
+            st = self.hass.states.get(eid)
+            try:
+                v = float(st.state) if st and st.state not in ("unknown", "unavailable") else 0.0
+            except Exception:
+                v = 0.0
+            tracked += v
+        if home_w <= 0:
+            return 0.0
+        return round((tracked / home_w) * 100.0, 2)
+
+    async def async_added_to_hass(self) -> None:
+        self._refresh_listeners()
+
+        @callback
+        def _on_meter_linked(event):
+            eid = event.data.get("entity_id")
+            if eid:
+                self._meter_entities.add(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_meter_unlinked(event):
+            eid = event.data.get("entity_id")
+            if eid and eid in self._meter_entities:
+                self._meter_entities.remove(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_label_meters_changed(event):
+            self._refresh_listeners()
+            self.async_schedule_update_ha_state()
+
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_label_meters_changed))
+
+    def _refresh_listeners(self) -> None:
+        for unsub in self._unsub_listeners:
+            unsub()
+        self._unsub_listeners.clear()
+        if not self.hass:
+            return
+        entities = set(self._meter_entities) | set(self.data.label_meters)
+        if self._home_entity:
+            entities.add(self._home_entity)
+
+        @callback
+        def _state_change_handler(event):
+            self.async_schedule_update_ha_state()
+
+        if entities:
+            unsub = async_track_state_change_event(self.hass, list(entities), _state_change_handler)
+            self._unsub_listeners.append(unsub)
+
+class TrackedToUntrackedRatioSensor(BasePCASensor):
+    _attr_name = "Tracked/Untracked Ratio"
+
+    def __init__(self, data: PCAData):
+        super().__init__(data)
+        self._home_entity: Optional[str] = data.baseline_sensors.get("home_consumption") if data.baseline_sensors else None
+        self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
+        self._unsub_listeners: List[Callable[[], None]] = []
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_tracked_untracked_ratio"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        if not self._home_entity:
+            return None
+        home_state = self.hass.states.get(self._home_entity)
+        try:
+            home_w = float(home_state.state) if home_state and home_state.state not in ("unknown", "unavailable") else 0.0
+        except Exception:
+            home_w = 0.0
+        tracked = 0.0
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        for eid in meter_ids:
+            st = self.hass.states.get(eid)
+            try:
+                v = float(st.state) if st and st.state not in ("unknown", "unavailable") else 0.0
+            except Exception:
+                v = 0.0
+            tracked += v
+        untracked = max(home_w - tracked, 0.0)
+        if untracked <= 0:
+            return None
+        return round(tracked / untracked, 3)
+
+    async def async_added_to_hass(self) -> None:
+        self._refresh_listeners()
+
+        @callback
+        def _on_meter_linked(event):
+            eid = event.data.get("entity_id")
+            if eid:
+                self._meter_entities.add(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_meter_unlinked(event):
+            eid = event.data.get("entity_id")
+            if eid and eid in self._meter_entities:
+                self._meter_entities.remove(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_label_meters_changed(event):
+            self._refresh_listeners()
+            self.async_schedule_update_ha_state()
+
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_label_meters_changed))
+
+    def _refresh_listeners(self) -> None:
+        for unsub in self._unsub_listeners:
+            unsub()
+        self._unsub_listeners.clear()
+        if not self.hass:
+            return
+        entities = set(self._meter_entities) | set(self.data.label_meters)
+        if self._home_entity:
+            entities.add(self._home_entity)
+
+        @callback
+        def _state_change_handler(event):
+            self.async_schedule_update_ha_state()
+
+        if entities:
+            unsub = async_track_state_change_event(self.hass, list(entities), _state_change_handler)
+            self._unsub_listeners.append(unsub)
+
+class _BaseCountSensor(BasePCASensor):
+    _attr_native_unit_of_measurement = None
+
+    def __init__(self, data: PCAData):
+        super().__init__(data)
+        self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
+        self._unsub: Optional[Callable[[], None]] = None
+
+    def _subscribe(self, include_home: bool = False) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+        @callback
+        def _on_change(event):
+            self.async_schedule_update_ha_state()
+        # events that affect counts
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_change))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_change))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_change))
+
+class MeterCountSensor(_BaseCountSensor):
+    _attr_name = "Meter Count"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_meter_count"
+
+    @property
+    def native_value(self) -> int:
+        return len(set(self.data.meter_to_circuit.keys()) | set(self.data.label_meters))
+
+    async def async_added_to_hass(self) -> None:
+        self._subscribe()
+
+class LabelMeterCountSensor(_BaseCountSensor):
+    _attr_name = "Label Meter Count"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_label_meter_count"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.data.label_meters)
+
+    async def async_added_to_hass(self) -> None:
+        self._subscribe()
+
+class MappedMeterCountSensor(_BaseCountSensor):
+    _attr_name = "Mapped Meter Count"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_mapped_meter_count"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.data.meter_to_circuit.keys())
+
+    async def async_added_to_hass(self) -> None:
+        self._subscribe()
+
+class UnavailableMeterCountSensor(BasePCASensor):
+    _attr_name = "Unavailable Meter Count"
+
+    def __init__(self, data: PCAData):
+        super().__init__(data)
+        self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
+        self._unsub_listeners: List[Callable[[], None]] = []
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_unavailable_meter_count"
+
+    @property
+    def native_value(self) -> int:
+        count = 0
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        for eid in meter_ids:
+            st = self.hass.states.get(eid)
+            if not st or st.state in ("unknown", "unavailable"):
+                count += 1
+        return count
+
+    async def async_added_to_hass(self) -> None:
+        self._refresh_listeners()
+
+        @callback
+        def _on_meter_linked(event):
+            eid = event.data.get("entity_id")
+            if eid:
+                self._meter_entities.add(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_meter_unlinked(event):
+            eid = event.data.get("entity_id")
+            if eid and eid in self._meter_entities:
+                self._meter_entities.remove(eid)
+                self._refresh_listeners()
+                self.async_schedule_update_ha_state()
+
+        @callback
+        def _on_label_meters_changed(event):
+            self._refresh_listeners()
+            self.async_schedule_update_ha_state()
+
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.label_meters_changed", _on_label_meters_changed))
+
+    def _refresh_listeners(self) -> None:
+        for unsub in self._unsub_listeners:
+            unsub()
+        self._unsub_listeners.clear()
+        if not self.hass:
+            return
+
+        @callback
+        def _state_change_handler(event):
+            self.async_schedule_update_ha_state()
+
+        meter_ids = set(self._meter_entities) | set(self.data.label_meters)
+        if meter_ids:
+            unsub = async_track_state_change_event(self.hass, list(meter_ids), _state_change_handler)
+            self._unsub_listeners.append(unsub)
