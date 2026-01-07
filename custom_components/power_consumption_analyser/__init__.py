@@ -397,6 +397,39 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
             return ""
         return "".join(ch for ch in s.lower() if ch.isalnum())
 
+    def _has_energy_label_for_entity(ent) -> bool:
+        """Return True if the entity carries the EnergyMeter label, by ID or by name fallback."""
+        if not ent:
+            return False
+        labels = set(getattr(ent, "labels", set()) or set())
+        # If registry stores IDs, compare directly
+        if data.energy_label_id and data.energy_label_id in labels:
+            return True
+        # Fallback: compare names via registry if labels may be names
+        try:
+            for lab in labels:
+                # lab may be ID: resolve name
+                label_obj = None
+                # lbl_reg may expose get or async_get
+                get_fn = getattr(lbl_reg, "get", None) or getattr(lbl_reg, "async_get", None)
+                if callable(get_fn):
+                    try:
+                        label_obj = get_fn(lab)  # works for ID keys
+                    except Exception:
+                        label_obj = None
+                name = None
+                if label_obj is not None:
+                    name = getattr(label_obj, "name", None)
+                else:
+                    # lab might actually be a name already
+                    if isinstance(lab, str):
+                        name = lab
+                if name and _norm(name) == "energymeter":
+                    return True
+        except Exception:
+            pass
+        return False
+
     # Find label id for 'EnergyMeter' (case/slug-insensitive)
     label_id = None
     try:
@@ -409,36 +442,51 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
         _LOGGER.debug("Label registry enumeration failed: %s", ex)
     data.energy_label_id = label_id
 
-    # Seed meters from devices carrying the label
+    # Seed meters from devices carrying the label and from entity labels
     added_entities: List[str] = []
-    if label_id:
+    try:
         # Device labels
-        try:
-            for device in getattr(dev_reg, "devices", {}).values():
-                lbls: Set[str] = set(getattr(device, "labels", set()) or set())
-                if label_id in lbls:
-                    data.devices_with_label.add(device.id)
-                    for ent in ent_reg.async_entries_for_device(device.id):
-                        if ent.domain == "sensor":
-                            eid = ent.entity_id
-                            if eid not in data.label_meters:
-                                data.label_meters.add(eid)
-                                added_entities.append(eid)
-        except Exception as ex:
-            _LOGGER.debug("Seeding label meters from devices failed: %s", ex)
+        for device in getattr(dev_reg, "devices", {}).values():
+            dev_labels: Set[str] = set(getattr(device, "labels", set()) or set())
+            has_dev_label = False
+            if data.energy_label_id and data.energy_label_id in dev_labels:
+                has_dev_label = True
+            else:
+                # Fallback by name
+                try:
+                    for lab in dev_labels:
+                        obj = None
+                        get_fn = getattr(lbl_reg, "get", None) or getattr(lbl_reg, "async_get", None)
+                        if callable(get_fn):
+                            try:
+                                obj = get_fn(lab)
+                            except Exception:
+                                obj = None
+                        nm = getattr(obj, "name", None) if obj else (lab if isinstance(lab, str) else None)
+                        if nm and _norm(nm) == "energymeter":
+                            has_dev_label = True
+                            break
+                except Exception:
+                    pass
+            if has_dev_label:
+                data.devices_with_label.add(device.id)
+                for ent in ent_reg.async_entries_for_device(device.id):
+                    if ent.domain == "sensor":
+                        eid = ent.entity_id
+                        if eid not in data.label_meters:
+                            data.label_meters.add(eid)
+                            added_entities.append(eid)
         # Entity labels directly
-        try:
-            for ent in getattr(ent_reg, "entities", {}).values():
-                if getattr(ent, "domain", None) != "sensor":
-                    continue
-                ent_labels: Set[str] = set(getattr(ent, "labels", set()) or set())
-                if label_id in ent_labels:
-                    eid = ent.entity_id
-                    if eid not in data.label_meters:
-                        data.label_meters.add(eid)
-                        added_entities.append(eid)
-        except Exception as ex:
-            _LOGGER.debug("Seeding label meters from entities failed: %s", ex)
+        for ent in getattr(ent_reg, "entities", {}).values():
+            if getattr(ent, "domain", None) != "sensor":
+                continue
+            if _has_energy_label_for_entity(ent):
+                eid = ent.entity_id
+                if eid not in data.label_meters:
+                    data.label_meters.add(eid)
+                    added_entities.append(eid)
+    except Exception as ex:
+        _LOGGER.debug("Seeding label meters failed: %s", ex)
     if added_entities:
         hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": added_entities, "removed": []})
 
@@ -460,12 +508,25 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
             if removed:
                 hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": [], "removed": removed})
             return
-        has_label = False
-        if data.energy_label_id:
+        # Check device label by ID or name
+        dev_labels: Set[str] = set(getattr(device, "labels", set()) or set())
+        has_label = (data.energy_label_id in dev_labels) if data.energy_label_id else False
+        if not has_label:
             try:
-                has_label = data.energy_label_id in (getattr(device, "labels", set()) or set())
+                for lab in dev_labels:
+                    obj = None
+                    get_fn = getattr(lbl_reg, "get", None) or getattr(lbl_reg, "async_get", None)
+                    if callable(get_fn):
+                        try:
+                            obj = get_fn(lab)
+                        except Exception:
+                            obj = None
+                    nm = getattr(obj, "name", None) if obj else (lab if isinstance(lab, str) else None)
+                    if nm and _norm(nm) == "energymeter":
+                        has_label = True
+                        break
             except Exception:
-                has_label = False
+                pass
         before = device_id in data.devices_with_label
         if has_label and not before:
             data.devices_with_label.add(device_id)
@@ -499,8 +560,7 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
         ent = ent_reg.async_get(entity_id)
         if not ent or ent.domain != "sensor":
             return
-        ent_labels: Set[str] = set(getattr(ent, "labels", set()) or set())
-        has_label = data.energy_label_id in ent_labels if data.energy_label_id else False
+        has_label = _has_energy_label_for_entity(ent)
         is_present = entity_id in data.label_meters
         if action == "remove" or not has_label:
             if is_present:
