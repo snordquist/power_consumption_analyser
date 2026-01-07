@@ -6,7 +6,7 @@
     "pyyaml==6.0.2",
     "voluptuous==0.13.1"
   ],
-  "codeowners": ["@yourname"],
+  "codeowners": ["@snordquist"],
   "iot_class": "local_push",
   "loggers": ["custom_components.power_consumption_analyser"],
   "config_flow": true
