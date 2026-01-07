@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers import entity_registry as er, device_registry as dr, label_registry as lr
+from homeassistant.components import persistent_notification
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +66,16 @@ class PCAData:
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}
         self.measure_history_max: int = 50
+        # Guided workflow state
+        self.workflow_active: bool = False
+        self.workflow_queue: List[str] = []
+        self.workflow_index: int = 0
+        self.workflow_wait_s: int = 0
+        self.workflow_notify_service: Optional[str] = None
+        self._workflow_saved_duration: Optional[int] = None
+        self.workflow_skip_circuits: Set[str] = set()
+        self.workflow_notification_id: str = f"{DOMAIN}_workflow"
+        self.workflow_ignore_result_for: Optional[str] = None
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
@@ -138,6 +149,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Apply options and listen for updates
     _apply_options_to_data(data, entry)
     entry.async_on_unload(entry.add_update_listener(_options_updated))
+
+    # Listen for measure_finished to drive workflow steps
+    async def _on_measure_finished(event):
+        if not data.workflow_active:
+            return
+        cid = event.data.get("circuit_id")
+        # Ignore if flagged for skip
+        if data.workflow_ignore_result_for and cid == data.workflow_ignore_result_for:
+            data.workflow_ignore_result_for = None
+            # Move ahead to next step
+            await _workflow_advance(hass, data)
+            return
+        # Only react if it's the current circuit
+        if data.workflow_index < len(data.workflow_queue):
+            current = data.workflow_queue[data.workflow_index]
+        else:
+            current = None
+        if cid and cid == current:
+            await _notify_step_result(hass, data, cid)
+            await _workflow_advance(hass, data)
+    hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished)
 
     return True
 
@@ -255,12 +287,81 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         target_id = entry_id or entry.entry_id
         hass.async_create_task(hass.config_entries.async_reload(target_id))
 
+    async def handle_workflow_start(call: ServiceCall):
+        if data.workflow_active:
+            _LOGGER.warning("Workflow already active; stop or restart first")
+            return
+        # Build queue
+        circuits = call.data.get("circuits")
+        skip = set(call.data.get("skip_circuits") or [])
+        wait_s = int(call.data.get("wait_s") or data.measure_duration_s)
+        notify_service = call.data.get("notify_service")
+        # Determine queue: provided or all except safe and skipped
+        if circuits:
+            queue = [c for c in circuits if c in data.circuits and c not in data.safe_circuits and c not in skip]
+        else:
+            queue = [c for c in data.circuits.keys() if c not in data.safe_circuits and c not in skip]
+        if not queue:
+            persistent_notification.async_create(hass, "Keine geeigneten Stromkreise zum Messen gefunden.", title="PCA Workflow")
+            return
+        data.workflow_active = True
+        data.workflow_queue = queue
+        data.workflow_index = 0
+        data.workflow_wait_s = max(5, min(3600, wait_s))
+        data.workflow_notify_service = notify_service
+        data.workflow_skip_circuits = skip
+        data._workflow_saved_duration = data.measure_duration_s
+        data.measure_duration_s = data.workflow_wait_s
+        # Start first step
+        await _workflow_start_current_step(hass, data)
+
+    async def handle_workflow_skip_current(call: ServiceCall):
+        if not data.workflow_active:
+            return
+        current = None
+        # If measurement is running for current, stop it and ignore result
+        if data.workflow_index < len(data.workflow_queue):
+            current = data.workflow_queue[data.workflow_index]
+            data.workflow_ignore_result_for = current
+            # Attempt to stop switch if already on
+            switch_eid = f"switch.measure_circuit_{current.lower()}"
+            await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
+        # Move to next step
+        await _simple_notify(hass, data, f"Überspringe Stromkreis {current or ''}.")
+        await _workflow_advance(hass, data)
+
+    async def handle_workflow_stop(call: ServiceCall):
+        if not data.workflow_active:
+            return
+        # Try stopping current measurement
+        if data.workflow_index < len(data.workflow_queue):
+            current = data.workflow_queue[data.workflow_index]
+            switch_eid = f"switch.measure_circuit_{current.lower()}"
+            await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
+        await _workflow_finish(hass, data, reason="abgebrochen")
+
+    async def handle_workflow_restart(call: ServiceCall):
+        if not data.workflow_active:
+            return
+        # Stop current measurement
+        if data.workflow_index < len(data.workflow_queue):
+            current = data.workflow_queue[data.workflow_index]
+            switch_eid = f"switch.measure_circuit_{current.lower()}"
+            await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
+        data.workflow_index = 0
+        await _simple_notify(hass, data, "Starte den Workflow neu.")
+        await _workflow_start_current_step(hass, data)
+
     hass.services.async_register(DOMAIN, "select_circuit", handle_select_circuit)
     hass.services.async_register(DOMAIN, "confirm_off", handle_confirm_off)
     hass.services.async_register(DOMAIN, "confirm_on", handle_confirm_on)
     hass.services.async_register(DOMAIN, "circuit_link_energy_meter", handle_link_energy_meter)
     hass.services.async_register(DOMAIN, "circuit_unlink_energy_meter", handle_unlink_energy_meter)
     hass.services.async_register(DOMAIN, "reload", handle_reload)
+    hass.services.async_register(DOMAIN, "start_guided_analysis", handle_workflow_start)
+    hass.services.async_register(DOMAIN, "workflow_skip_current", handle_workflow_skip_current)
+    hass.services.async_register(DOMAIN, "workflow_stop", handle_workflow_stop)
+    hass.services.async_register(DOMAIN, "workflow_restart", handle_workflow_restart)
 
 async def _state_float(hass: HomeAssistant, entity_id: Optional[str]) -> float:
     if not entity_id:
@@ -438,3 +539,70 @@ async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if not data:
         return
     _apply_options_to_data(data, entry)
+
+async def _workflow_start_current_step(hass: HomeAssistant, data: PCAData) -> None:
+    if not data.workflow_active or data.workflow_index >= len(data.workflow_queue):
+        await _workflow_finish(hass, data)
+        return
+    current = data.workflow_queue[data.workflow_index]
+    # Notify user to turn off current circuit
+    nxt = data.workflow_queue[data.workflow_index + 1] if data.workflow_index + 1 < len(data.workflow_queue) else None
+    msg = f"Schalte jetzt Stromkreis {current} AUS. Warte {data.workflow_wait_s} Sekunden."
+    if nxt:
+        msg += f" Danach folgt: {nxt}."
+    await _notify(hass, data, msg, title="PCA Schritt gestartet")
+    # Start measurement via switch turn_on
+    switch_eid = f"switch.measure_circuit_{current.lower()}"
+    await hass.services.async_call("switch", "turn_on", {"entity_id": switch_eid}, blocking=False)
+
+async def _workflow_advance(hass: HomeAssistant, data: PCAData) -> None:
+    if not data.workflow_active:
+        return
+    data.workflow_index += 1
+    if data.workflow_index >= len(data.workflow_queue):
+        await _workflow_finish(hass, data)
+    else:
+        await _workflow_start_current_step(hass, data)
+
+async def _workflow_finish(hass: HomeAssistant, data: PCAData, reason: Optional[str] = None) -> None:
+    # Restore duration
+    if data._workflow_saved_duration is not None:
+        data.measure_duration_s = data._workflow_saved_duration
+        data._workflow_saved_duration = None
+    if not data.workflow_active:
+        return
+    if reason:
+        await _notify(hass, data, f"Workflow {reason}.", title="PCA Workflow Ende")
+    else:
+        await _notify(hass, data, "Workflow abgeschlossen.", title="PCA Workflow Ende")
+    data.workflow_active = False
+    data.workflow_queue = []
+    data.workflow_index = 0
+    data.workflow_wait_s = 0
+    data.workflow_notify_service = None
+    data.workflow_skip_circuits = set()
+    data.workflow_ignore_result_for = None
+
+async def _notify_step_result(hass: HomeAssistant, data: PCAData, circuit_id: str) -> None:
+    effect = data.measure_results.get(circuit_id)
+    if effect is None:
+        msg = f"Ergebnis {circuit_id}: kein Wert verfügbar."
+    else:
+        msg = f"Ergebnis {circuit_id}: Auswirkung auf nicht erfasste Last {effect:.2f} W."
+    await _notify(hass, data, msg, title="PCA Schritt Ergebnis")
+
+async def _notify(hass: HomeAssistant, data: PCAData, message: str, title: str = "PCA") -> None:
+    # Persistent notification
+    try:
+        persistent_notification.async_create(hass, message, title=title, notification_id=data.workflow_notification_id)
+    except Exception:
+        pass
+    # Optional notify service
+    if data.workflow_notify_service:
+        try:
+            await hass.services.async_call("notify", data.workflow_notify_service, {"message": message, "title": title}, blocking=False)
+        except Exception:
+            _LOGGER.debug("Notify service %s failed", data.workflow_notify_service)
+
+async def _simple_notify(hass: HomeAssistant, data: PCAData, message: str) -> None:
+    await _notify(hass, data, message, title="PCA Workflow")
