@@ -1,0 +1,38 @@
+select_circuit:
+  name: Select circuit for analysis
+  description: Select a circuit for a manual analysis step
+  fields:
+    circuit_id:
+      description: Circuit ID (as defined in unterverteilung.yaml)
+      example: 2F7
+    session_id:
+      description: Optional session identifier
+      example: nightly_2026_01_07
+
+confirm_off:
+  name: Confirm circuit is OFF (manual)
+  description: Confirm the selected circuit has been turned OFF manually and capture measurements
+
+confirm_on:
+  name: Confirm circuit is ON (manual)
+  description: Confirm the selected circuit has been restored to ON
+
+circuit_link_energy_meter:
+  name: Link energy meter to circuit
+  description: Associate an energy meter entity with a circuit and label its device as energy_meter
+  fields:
+    entity_id:
+      description: Energy meter sensor entity_id (power/energy)
+      example: sensor.kitchen_plug_power
+    circuit_id:
+      description: Circuit ID to associate with
+      example: 2F7
+
+circuit_unlink_energy_meter:
+  name: Unlink energy meter from circuit
+  description: Remove the association between an energy meter entity and its circuit
+  fields:
+    entity_id:
+      description: Energy meter sensor entity_id to unlink
+      example: sensor.kitchen_plug_power
+
