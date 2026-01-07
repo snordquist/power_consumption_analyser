@@ -49,6 +49,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         yaml_path = Path(path)
         content = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        # Parse protection devices (RCD/RCBO) to build RCD groups
+        for pd in content.get("protection_devices", []) or []:
+            ptype = str(pd.get("type", "")).upper()
+            if ptype not in ("RCD", "RCBO"):
+                continue
+            label = pd.get("label") or pd.get("id") or "RCD"
+            protects = list(pd.get("protects", []) or [])
+            # Store group for later visualization and mapping
+            data.rcd_groups.append({"label": label, "id": pd.get("id"), "type": ptype, "protects": protects})
+            if protects:
+                data.rcd_to_circuits.setdefault(label, [])
+                for cid in protects:
+                    if cid not in data.rcd_to_circuits[label]:
+                        data.rcd_to_circuits[label].append(cid)
+        # Parse circuits as before
         for c in content.get("circuits", []):
             cid = c.get("id")
             if not cid:
@@ -104,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data.workflow_ignore_result_for = None
             # Move ahead to next step
             await _workflow_advance(hass, data)
+            async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
             return
         # Only react if it's the current circuit
         if data.workflow_index < len(data.workflow_queue):
@@ -113,6 +129,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if cid and cid == current:
             await _notify_step_result(hass, data, cid)
             await _workflow_advance(hass, data)
+            async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
     hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished)
 
     # Handle mobile app notification actions to control the workflow
@@ -280,6 +297,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         data.workflow_skip_circuits = skip
         data._workflow_saved_duration = data.measure_duration_s
         data.measure_duration_s = data.workflow_wait_s
+        async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
         # Start first step
         await _workflow_start_current_step(hass, data)
 
@@ -306,6 +324,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         # Move to next step
         await _simple_notify(hass, data, f"Überspringe Stromkreis {current or ''}.")
         await _workflow_advance(hass, data)
+        async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
 
     async def handle_workflow_stop(call: ServiceCall):
         if not data.workflow_active:
@@ -341,6 +360,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         data.stopping_workflow = False
         # Notify user
         await _notify(hass, data, "Workflow abgebrochen.", title="PCA Workflow Ende")
+        async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
 
     async def handle_workflow_restart(call: ServiceCall):
         if not data.workflow_active:
@@ -353,6 +373,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         data.workflow_index = 0
         await _simple_notify(hass, data, "Starte den Workflow neu.")
         await _workflow_start_current_step(hass, data)
+        async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
 
     hass.services.async_register(DOMAIN, "select_circuit", handle_select_circuit)
     hass.services.async_register(DOMAIN, "confirm_off", handle_confirm_off)

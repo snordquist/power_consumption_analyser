@@ -44,10 +44,22 @@ views:
             {% set parts = st.split(':') %}
             {% if parts|length >= 2 %}
             Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
-            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**. (Restzeit: **{{ parts[2] }}**) {% endif %}
+            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
             {% else %}
             Messung läuft…
             {% endif %}
+
+      # Countdown
+      - type: conditional
+        conditions:
+          - entity: sensor.power_consumption_analyser_measurement_status
+            state_not: idle
+        card:
+          type: entities
+          title: Countdown
+          entities:
+            - entity: timer.pca_step
+              name: Restzeit
 
       # Controls: global device buttons
       - type: horizontal-stack
@@ -121,3 +133,93 @@ views:
           - mean
         entities:
           - sensor.power_consumption_analyser_tracked_coverage
+
+      # Workflow progress visualization
+      - type: markdown
+        title: Fortschritt
+        content: >-
+          {% set attrs = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') %}
+          {% set rem = state_attr('sensor.power_consumption_analyser_workflow_progress', 'remaining') %}
+          {% if attrs %}
+          Abgeschlossen:
+          {% for c in attrs %}
+          - ✅ {{ c }}
+          {% endfor %}
+          {% else %}
+          Noch nichts abgeschlossen.
+          {% endif %}
+
+          {% if rem %}
+          Offen:
+          {% for c in rem %}
+          - ⏳ {{ c }}
+          {% endfor %}
+          {% else %}
+          Keine offenen Schritte.
+          {% endif %}
+
+      # Unterverteilung: RCDs und Sicherungen
+      - type: markdown
+        title: Unterverteilung
+        content: >-
+          {% set rcds = state_attr('sensor.power_consumption_analyser_rcd_layout', 'rcds') or [] %}
+          {% set layout = state_attr('sensor.power_consumption_analyser_rcd_layout', 'layout') or {} %}
+          {% set done = state_attr('sensor.power_consumption_analyser_rcd_layout', 'done') or [] %}
+          {% set current = state_attr('sensor.power_consumption_analyser_rcd_layout', 'current') %}
+          {% if rcds %}
+          {% for r in rcds %}
+          ### {{ r }}
+          {% set circuits = layout.get(r, []) %}
+          {% if circuits %}
+          {% for c in circuits %}
+          {% if c in done %}- ✅ {{ c }}
+          {% elif c == current %}- 🔶 {{ c }}
+          {% else %}- ⏳ {{ c }}
+          {% endif %}
+          {% endfor %}
+          {% else %}
+          (keine Sicherungen)
+          {% endif %}
+          {% endfor %}
+          {% else %}
+          (keine RCD-Gruppen gefunden)
+          {% endif %}
+
+      # Unterverteilung: RCDs und Sicherungen (Grid)
+      - type: markdown
+        title: Unterverteilung (Grid)
+        content: >-
+          {% set rcds = state_attr('sensor.power_consumption_analyser_rcd_layout', 'rcds') or [] %}
+          {% set layout = state_attr('sensor.power_consumption_analyser_rcd_layout', 'layout') or {} %}
+          {% set done = state_attr('sensor.power_consumption_analyser_rcd_layout', 'done') or [] %}
+          {% set current = state_attr('sensor.power_consumption_analyser_rcd_layout', 'current') %}
+          {% set cols = 4 %}
+          {% if rcds %}
+          {% for r in rcds %}
+          #### {{ r }}
+          {% set circuits = layout.get(r, []) %}
+          {% if circuits %}
+          <table>
+          {% for i in range(0, circuits|length, cols) %}
+            <tr>
+            {% for c in circuits[i:i+cols] %}
+              <td style="padding:6px 12px;">
+                {% if c in done %}
+                  ✅ <strong>{{ c }}</strong>
+                {% elif c == current %}
+                  🔶 <strong>{{ c }}</strong>
+                {% else %}
+                  ⏳ <strong>{{ c }}</strong>
+                {% endif %}
+              </td>
+            {% endfor %}
+            </tr>
+          {% endfor %}
+          </table>
+          {% else %}
+          (keine Sicherungen)
+          {% endif %}
+          {% endfor %}
+          {% else %}
+          (keine RCD-Gruppen gefunden)
+          {% endif %}

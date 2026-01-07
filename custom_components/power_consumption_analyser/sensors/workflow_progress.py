@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import List, Dict
+from homeassistant.core import callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from ..model import PCAData
 from .base import BasePCASensor
 from ..const import DOMAIN
@@ -31,3 +33,8 @@ class WorkflowProgressSensor(BasePCASensor):
             "current": current,
         }
 
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _state_update():
+            self.async_schedule_update_ha_state()
+        self.async_on_remove(async_dispatcher_connect(self.hass, f"{DOMAIN}_workflow_state", _state_update))

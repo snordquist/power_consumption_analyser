@@ -16,6 +16,8 @@ from .sensors.analysis_status import AnalysisStatusSensor
 from .sensors.measurement_status import MeasurementStatusSensor
 from .sensors.circuit_effect import CircuitEffectSensor
 from .sensors.summary_effect import SummaryEffectSensor
+from .sensors.workflow_progress import WorkflowProgressSensor
+from .sensors.rcd_layout import RCDLayoutSensor
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
@@ -34,4 +36,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         entities.append(CircuitEffectSensor(data, cid))
     entities.append(MeasurementStatusSensor(data))
     entities.append(SummaryEffectSensor(data))
+    entities.append(WorkflowProgressSensor(data))
+    entities.append(RCDLayoutSensor(data))
     async_add_entities(entities, True)
