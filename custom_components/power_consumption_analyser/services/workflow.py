@@ -30,6 +30,10 @@ async def simple_notify(hass: HomeAssistant, data: PCAData, message: str) -> Non
     await notify(hass, data, message, title="PCA Workflow")
 
 async def workflow_finish(hass: HomeAssistant, data: PCAData, reason: Optional[str] = None) -> None:
+    try:
+        await hass.services.async_call("timer", "cancel", {"entity_id": "timer.pca_step"}, blocking=False)
+    except Exception:
+        pass
     if data._workflow_saved_duration is not None:
         data.measure_duration_s = data._workflow_saved_duration
         data._workflow_saved_duration = None
@@ -73,6 +77,11 @@ async def workflow_start_current_step(hass: HomeAssistant, data: PCAData) -> Non
     data.measurement_origin = "workflow"
     switch_eid = f"switch.measure_circuit_{current.lower()}"
     await hass.services.async_call("switch", "turn_on", {"entity_id": switch_eid}, blocking=True)
+    # Start countdown timer helper if present
+    try:
+        await hass.services.async_call("timer", "start", {"entity_id": "timer.pca_step", "duration": data.workflow_wait_s}, blocking=False)
+    except Exception:
+        pass
 
 async def workflow_advance(hass: HomeAssistant, data: PCAData) -> None:
     if not data.workflow_active:
