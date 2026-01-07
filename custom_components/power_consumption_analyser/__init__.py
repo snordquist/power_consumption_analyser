@@ -119,6 +119,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return True
 
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry to support UI reload."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        # Optionally clean per-entry state if stored, keeping global services intact
+        data: PCAData = hass.data.get(DOMAIN)
+        if data:
+            data.step_active = False
+            data.current_circuit = None
+    return unload_ok
+
 @callback
 def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) -> None:
     async def handle_select_circuit(call: ServiceCall):
@@ -216,11 +227,18 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
             {"entity_id": entity_id, "circuit_id": cid},
         )
 
+    async def handle_reload(call: ServiceCall):
+        """Reload this integration entry or a specific entry_id."""
+        entry_id = call.data.get("entry_id")
+        target_id = entry_id or entry.entry_id
+        hass.async_create_task(hass.config_entries.async_reload(target_id))
+
     hass.services.async_register(DOMAIN, "select_circuit", handle_select_circuit)
     hass.services.async_register(DOMAIN, "confirm_off", handle_confirm_off)
     hass.services.async_register(DOMAIN, "confirm_on", handle_confirm_on)
     hass.services.async_register(DOMAIN, "circuit_link_energy_meter", handle_link_energy_meter)
     hass.services.async_register(DOMAIN, "circuit_unlink_energy_meter", handle_unlink_energy_meter)
+    hass.services.async_register(DOMAIN, "reload", handle_reload)
 
 async def _state_float(hass: HomeAssistant, entity_id: Optional[str]) -> float:
     if not entity_id:
