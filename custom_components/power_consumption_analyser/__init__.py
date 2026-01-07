@@ -391,15 +391,21 @@ async def _ensure_labels_for_energy_meters(hass: HomeAssistant, entity_ids: List
     dev_reg = dr.async_get(hass)
     lbl_reg = lr.async_get(hass)
 
-    # Find or create the new label by name and detect the old one for cleanup
+    def _norm(s: Optional[str]) -> str:
+        if not s:
+            return ""
+        return "".join(ch for ch in s.lower() if ch.isalnum())
+
+    # Find or create the new label by name (case/slug-insensitive) and detect old ones for cleanup
     energy_label = None
     old_energy_label = None
     try:
         for lbl in getattr(lbl_reg, "labels", {}).values():
             name = getattr(lbl, "name", None)
-            if name == "EnergyMeter":
+            norm = _norm(name)
+            if norm == "energymeter":
                 energy_label = lbl
-            elif name == "energy_meter":
+            elif norm in ("energy_meter",):
                 old_energy_label = lbl
         if energy_label is None:
             create = getattr(lbl_reg, "async_create", None)
@@ -438,11 +444,17 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
     dev_reg = dr.async_get(hass)
     lbl_reg = lr.async_get(hass)
 
-    # Find label id for 'EnergyMeter'
+    def _norm(s: Optional[str]) -> str:
+        if not s:
+            return ""
+        return "".join(ch for ch in s.lower() if ch.isalnum())
+
+    # Find label id for 'EnergyMeter' (case/slug-insensitive)
     label_id = None
     try:
         for lbl in getattr(lbl_reg, "labels", {}).values():
-            if getattr(lbl, "name", None) == "EnergyMeter":
+            name = getattr(lbl, "name", None)
+            if _norm(name) == "energymeter":
                 label_id = getattr(lbl, "id", None)
                 break
     except Exception as ex:
