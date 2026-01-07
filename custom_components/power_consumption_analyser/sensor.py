@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Set, List
+from typing import Optional, Set, List, Callable
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
@@ -39,7 +39,7 @@ class TrackedPowerSumSensor(BasePCASensor):
     def __init__(self, data: PCAData):
         super().__init__(data)
         self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
-        self._unsub_listeners: List[callable] = []
+        self._unsub_listeners: List[Callable[[], None]] = []
 
     @property
     def unique_id(self) -> str:
@@ -58,23 +58,24 @@ class TrackedPowerSumSensor(BasePCASensor):
         return round(total, 2)
 
     async def async_added_to_hass(self) -> None:
-        # Listen to meters state changes to refresh
         self._refresh_listeners()
-        # Listen to dynamic link/unlink events to adjust the set
+
         @callback
         def _on_meter_linked(event):
             eid = event.data.get("entity_id")
             if eid:
                 self._meter_entities.add(eid)
                 self._refresh_listeners()
-                self.async_write_ha_state()
+                self.async_schedule_update_ha_state()
+
         @callback
         def _on_meter_unlinked(event):
             eid = event.data.get("entity_id")
             if eid and eid in self._meter_entities:
                 self._meter_entities.remove(eid)
                 self._refresh_listeners()
-                self.async_write_ha_state()
+                self.async_schedule_update_ha_state()
+
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
 
@@ -84,8 +85,11 @@ class TrackedPowerSumSensor(BasePCASensor):
         self._unsub_listeners.clear()
         if not self.hass:
             return
+
+        @callback
         def _state_change_handler(event):
-            self.async_write_ha_state()
+            self.async_schedule_update_ha_state()
+
         if self._meter_entities:
             unsub = async_track_state_change_event(self.hass, list(self._meter_entities), _state_change_handler)
             self._unsub_listeners.append(unsub)
@@ -98,7 +102,7 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
         super().__init__(data)
         self._meter_entities: Set[str] = set(data.meter_to_circuit.keys())
         self._home_entity: Optional[str] = data.baseline_sensors.get("home_consumption") if data.baseline_sensors else None
-        self._unsub_listeners: List[callable] = []
+        self._unsub_listeners: List[Callable[[], None]] = []
 
     @property
     def unique_id(self) -> str:
@@ -122,27 +126,27 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
                 v = 0.0
             tracked += v
         value = home_w - tracked
-        # Clamp to >= 0 to avoid minor negative due to rounding/noise
         return round(value if value >= 0 else 0.0, 2)
 
     async def async_added_to_hass(self) -> None:
-        # Listen to home consumption and meters
         self._refresh_listeners()
-        # Listen to dynamic link/unlink events
+
         @callback
         def _on_meter_linked(event):
             eid = event.data.get("entity_id")
             if eid:
                 self._meter_entities.add(eid)
                 self._refresh_listeners()
-                self.async_write_ha_state()
+                self.async_schedule_update_ha_state()
+
         @callback
         def _on_meter_unlinked(event):
             eid = event.data.get("entity_id")
             if eid and eid in self._meter_entities:
                 self._meter_entities.remove(eid)
                 self._refresh_listeners()
-                self.async_write_ha_state()
+                self.async_schedule_update_ha_state()
+
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_linked", _on_meter_linked))
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.meter_unlinked", _on_meter_unlinked))
 
@@ -155,8 +159,11 @@ class CalculatedUntrackedPowerSensor(BasePCASensor):
         entities = set(self._meter_entities)
         if self._home_entity:
             entities.add(self._home_entity)
+
+        @callback
         def _state_change_handler(event):
-            self.async_write_ha_state()
+            self.async_schedule_update_ha_state()
+
         if entities:
             unsub = async_track_state_change_event(self.hass, list(entities), _state_change_handler)
             self._unsub_listeners.append(unsub)
