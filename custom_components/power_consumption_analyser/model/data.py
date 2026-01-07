@@ -57,7 +57,9 @@ class PCAData:
         self.stopping_workflow: bool = False
         # Origin of current measurement: 'workflow' or 'manual'
         self.measurement_origin: Optional[str] = None
+        # RCD layout/grouping parsed from unterverteilung.yaml
+        self.rcd_groups: List[Dict[str, object]] = []
+        self.rcd_to_circuits: Dict[str, List[str]] = {}
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
-
