@@ -5,86 +5,23 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import List, Optional, Set
 
 import yaml
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers import entity_registry as er, device_registry as dr, label_registry as lr
-from homeassistant.components import persistent_notification
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.components import persistent_notification
+
+from .const import DOMAIN, CONF_UNTERVERTEILUNG_PATH, CONF_SAFE_CIRCUITS, CONF_BASELINE_SENSORS, CONF_UNTRACKED_NUMBER, OPT_ENERGY_METERS_MAP, PLATFORMS
+from .model import PCAData, Circuit
+from .services.helpers import state_float as _state_float, calc_tracked_power as _calc_tracked_power
+from .services.workflow import workflow_start_current_step as _workflow_start_current_step, workflow_advance as _workflow_advance, workflow_finish as _workflow_finish, notify as _notify, simple_notify as _simple_notify
 
 _LOGGER = logging.getLogger(__name__)
-
-DOMAIN = "power_consumption_analyser"
-CONF_UNTERVERTEILUNG_PATH = "unterverteilung_path"
-CONF_SAFE_CIRCUITS = "safe_circuits"
-CONF_BASELINE_SENSORS = "baseline_sensors"
-CONF_UNTRACKED_NUMBER = "untracked_number"
-
-# Options key to persist dynamic energy meter mappings
-OPT_ENERGY_METERS_MAP = "energy_meters_map"  # entity_id -> circuit_id
-
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON]
-
-class Circuit:
-    def __init__(self, id: str, phase: str, breaker: str, rating: str, description: str, energy_meters: Optional[List[str]] = None):
-        self.id = id
-        self.phase = phase
-        self.breaker = breaker
-        self.rating = rating
-        self.description = description
-        self.energy_meters = energy_meters or []
-
-class PCAData:
-    def __init__(self, hass: HomeAssistant):
-        self.hass = hass
-        self.circuits: Dict[str, Circuit] = {}
-        self.safe_circuits: List[str] = []
-        self.session_id: Optional[str] = None
-        self.current_circuit: Optional[str] = None
-        self.step_active: bool = False
-        self.untracked_number: Optional[str] = None
-        self.baseline_sensors: Dict[str, str] = {}
-        # energy meter mappings
-        self.energy_meters_by_circuit: Dict[str, List[str]] = {}
-        self.meter_to_circuit: Dict[str, str] = {}
-        # label-based meters and label tracking
-        self.label_meters: Set[str] = set()
-        self.energy_label_id: Optional[str] = None
-        self.devices_with_label: Set[str] = set()
-        # Measurement workflow state
-        self.measure_samples: Dict[str, List[float]] = {}
-        self.measure_baseline: Dict[str, float] = {}
-        self.measure_listeners: Dict[str, Optional[callable]] = {}
-        self.measure_timers: Dict[str, Optional[callable]] = {}
-        self.measure_results: Dict[str, float] = {}
-        self.measure_duration_s: int = 30
-        self.measuring_circuit: Optional[str] = None
-        # History of measurements per circuit
-        self.measure_history: Dict[str, List[dict]] = {}
-        self.measure_history_max: int = 50
-        # Guided workflow state
-        self.workflow_active: bool = False
-        self.workflow_queue: List[str] = []
-        self.workflow_index: int = 0
-        self.workflow_wait_s: int = 0
-        self.workflow_notify_service: Optional[str] = None
-        self._workflow_saved_duration: Optional[int] = None
-        self.workflow_skip_circuits: Set[str] = set()
-        self.workflow_notification_id: str = f"{DOMAIN}_workflow"
-        self.workflow_ignore_result_for: Optional[str] = None
-        # Guard to block starts while stopping workflow
-        self.block_measure_starts: bool = False
-        self.stopping_workflow: bool = False
-        # Origin of current measurement: 'workflow' or 'manual'
-        self.measurement_origin: Optional[str] = None
-
-    def is_safe(self, cid: str) -> bool:
-        return cid in self.safe_circuits
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, PCAData(hass))
@@ -394,26 +331,6 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
     hass.services.async_register(DOMAIN, "workflow_stop", handle_workflow_stop)
     hass.services.async_register(DOMAIN, "workflow_restart", handle_workflow_restart)
 
-async def _state_float(hass: HomeAssistant, entity_id: Optional[str]) -> float:
-    if not entity_id:
-        return 0.0
-    state = hass.states.get(entity_id)
-    try:
-        return float(state.state) if state else 0.0
-    except Exception:
-        return 0.0
-
-async def _calc_tracked_power(hass: HomeAssistant, data: PCAData) -> float:
-    total = 0.0
-    for eid in list(data.meter_to_circuit.keys()):
-        st = hass.states.get(eid)
-        try:
-            v = float(st.state) if st and st.state not in ("unknown", "unavailable") else 0.0
-        except Exception:
-            v = 0.0
-        total += v
-    return round(total, 2)
-
 async def _ensure_labels_for_energy_meters(hass: HomeAssistant, entity_ids: List[str]) -> None:
     """Ensure the device for each entity has the 'EnergyMeter' label."""
     if not entity_ids:
@@ -583,50 +500,6 @@ async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return
     _apply_options_to_data(data, entry)
 
-async def _workflow_start_current_step(hass: HomeAssistant, data: PCAData) -> None:
-    if not data.workflow_active or data.workflow_index >= len(data.workflow_queue):
-        await _workflow_finish(hass, data)
-        return
-    current = data.workflow_queue[data.workflow_index]
-    # Notify user to turn off current circuit
-    nxt = data.workflow_queue[data.workflow_index + 1] if data.workflow_index + 1 < len(data.workflow_queue) else None
-    msg = f"Schalte jetzt Stromkreis {current} AUS. Warte {data.workflow_wait_s} Sekunden."
-    if nxt:
-        msg += f" Danach folgt: {nxt}."
-    await _notify(hass, data, msg, title="PCA Schritt gestartet")
-    # Mark origin and start measurement via switch turn_on
-    data.measurement_origin = "workflow"
-    switch_eid = f"switch.measure_circuit_{current.lower()}"
-    await hass.services.async_call("switch", "turn_on", {"entity_id": switch_eid}, blocking=True)
-
-async def _workflow_advance(hass: HomeAssistant, data: PCAData) -> None:
-    if not data.workflow_active:
-        return
-    data.workflow_index += 1
-    if data.workflow_index >= len(data.workflow_queue):
-        await _workflow_finish(hass, data)
-    else:
-        await _workflow_start_current_step(hass, data)
-
-async def _workflow_finish(hass: HomeAssistant, data: PCAData, reason: Optional[str] = None) -> None:
-    # Restore duration
-    if data._workflow_saved_duration is not None:
-        data.measure_duration_s = data._workflow_saved_duration
-        data._workflow_saved_duration = None
-    if not data.workflow_active:
-        return
-    if reason:
-        await _notify(hass, data, f"Workflow {reason}.", title="PCA Workflow Ende")
-    else:
-        await _notify(hass, data, "Workflow abgeschlossen.", title="PCA Workflow Ende")
-    data.workflow_active = False
-    data.workflow_queue = []
-    data.workflow_index = 0
-    data.workflow_wait_s = 0
-    data.workflow_notify_service = None
-    data.workflow_skip_circuits = set()
-    data.workflow_ignore_result_for = None
-
 async def _notify_step_result(hass: HomeAssistant, data: PCAData, circuit_id: str) -> None:
     effect = data.measure_results.get(circuit_id)
     if effect is None:
@@ -634,19 +507,3 @@ async def _notify_step_result(hass: HomeAssistant, data: PCAData, circuit_id: st
     else:
         msg = f"Ergebnis {circuit_id}: Auswirkung auf nicht erfasste Last {effect:.2f} W."
     await _notify(hass, data, msg, title="PCA Schritt Ergebnis")
-
-async def _notify(hass: HomeAssistant, data: PCAData, message: str, title: str = "PCA") -> None:
-    # Persistent notification
-    try:
-        persistent_notification.async_create(hass, message, title=title, notification_id=data.workflow_notification_id)
-    except Exception:
-        pass
-    # Optional notify service
-    if data.workflow_notify_service:
-        try:
-            await hass.services.async_call("notify", data.workflow_notify_service, {"message": message, "title": title}, blocking=False)
-        except Exception:
-            _LOGGER.debug("Notify service %s failed", data.workflow_notify_service)
-
-async def _simple_notify(hass: HomeAssistant, data: PCAData, message: str) -> None:
-    await _notify(hass, data, message, title="PCA Workflow")

@@ -8,6 +8,13 @@ import pytest
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 
+# Ignore legacy files after test split to avoid duplicate module basenames
+def pytest_ignore_collect(collection_path: Path, config):
+    p = str(collection_path)
+#    if p.endswith("/tests/test_summary_sensor.py") or p.endswith("\\tests\\test_summary_sensor.py"):
+#        return True
+    return False
+
 @pytest.fixture
 def temp_config_dir(tmp_path: Path):
     d = tmp_path / "config"
@@ -31,4 +38,3 @@ def sample_yaml(temp_config_dir: Path):
         encoding="utf-8",
     )
     return yaml_path
-

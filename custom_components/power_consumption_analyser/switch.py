@@ -10,7 +10,8 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from . import DOMAIN, PCAData
+from .const import DOMAIN
+from .model import PCAData
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):

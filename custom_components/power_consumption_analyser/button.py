@@ -5,7 +5,8 @@ from typing import List
 from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.entity import DeviceInfo
 
-from . import DOMAIN, PCAData
+from .const import DOMAIN
+from .model import PCAData
 
 async def async_setup_entry(hass, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]

@@ -23,17 +23,14 @@ async def test_setup_entry_and_sensors(hass: HomeAssistant, sample_yaml, enable_
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Seed states
     hass.states.async_set("sensor.home_consumption_now_w", 500)
     hass.states.async_set("sensor.kitchen_plug_power", 120)
     await hass.async_block_till_done()
 
-    # Read computed sensors
     tracked = hass.states.get("sensor.power_consumption_analyser_tracked_power_sum")
     untracked = hass.states.get("sensor.power_consumption_analyser_untracked_power")
     assert tracked is not None
     assert untracked is not None
-
-    # Values reflect the current states
     assert float(tracked.state) == 120.0
     assert float(untracked.state) == 380.0
+

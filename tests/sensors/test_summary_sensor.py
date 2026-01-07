@@ -20,17 +20,14 @@ async def test_summary_sensor_attributes(hass: HomeAssistant, sample_yaml, enabl
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Prepare base states
     hass.states.async_set("sensor.home_consumption_now_w", 500)
     await hass.async_block_till_done()
 
-    # Use any 2 circuits from sample
     data = hass.data[DOMAIN]
     cids = list(data.circuits.keys())
     if len(cids) < 2:
         pytest.skip("need at least two circuits")
 
-    # Emulate two finished measurements by writing history and firing event
     data.measure_history[cids[0]] = [
         {"ts": "t1", "effect": 50.0, "baseline": 300.0, "avg_untracked": 250.0, "samples": 3, "duration_s": 30},
         {"ts": "t2", "effect": 60.0, "baseline": 310.0, "avg_untracked": 250.0, "samples": 4, "duration_s": 30},
@@ -44,9 +41,9 @@ async def test_summary_sensor_attributes(hass: HomeAssistant, sample_yaml, enabl
 
     summary = hass.states.get("sensor.power_consumption_analyser_measurement_summary")
     assert summary is not None
-    # native value is max average effect; with effects [50,60] and [20] it's 55 for first circuit
     float(summary.state)
     attrs = summary.attributes
     assert "avg_effects" in attrs and isinstance(attrs["avg_effects"], dict)
     assert len(attrs["avg_effects"]) >= 2
     assert any(item["circuit_id"] == cids[0] for item in attrs["top3_by_avg"]) or any(item["circuit_id"] == cids[1] for item in attrs["top3_by_avg"])
+
