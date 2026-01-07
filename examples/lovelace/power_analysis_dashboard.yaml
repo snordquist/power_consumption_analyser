@@ -39,15 +39,15 @@ views:
         card:
           type: markdown
           title: Anleitung
-          content: >-
-            {% set st = states('sensor.power_consumption_analyser_measurement_status') %}
-            {% set parts = st.split(':') %}
-            {% if parts|length >= 2 %}
-            Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
-            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
-            {% else %}
-            Messung läuft…
-            {% endif %}
+          content: |
+           {% set st = states('sensor.power_consumption_analyser_measurement_status') %}
+           {% set parts = st.split(':') %}
+           {% if parts|length >= 2 %}
+           Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
+           {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
+           {% else %}
+           Messung läuft…
+           {% endif %}
 
       # Countdown
       - type: conditional
@@ -55,11 +55,13 @@ views:
           - entity: sensor.power_consumption_analyser_measurement_status
             state_not: idle
         card:
-          type: entities
-          title: Countdown
-          entities:
-            - entity: timer.pca_step
-              name: Restzeit
+          type: vertical-stack
+          cards:
+            - type: entities
+              title: Countdown
+              entities:
+                - entity: sensor.power_consumption_analyser_countdown
+                  name: Restzeit (Sekunden)
             - type: button
               name: Weiter
               icon: mdi:arrow-right
@@ -143,53 +145,55 @@ views:
       # Workflow progress visualization
       - type: markdown
         title: Fortschritt
-        content: >-
-          {% set attrs = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') %}
-          {% set rem = state_attr('sensor.power_consumption_analyser_workflow_progress', 'remaining') %}
-          {% if attrs %}
-          Abgeschlossen:
-          {% for c in attrs %}
-          - ✅ {{ c }}
-          {% endfor %}
-          {% else %}
-          Noch nichts abgeschlossen.
-          {% endif %}
+        content: |
+           {% set attrs = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') %}
+           {% set rem = state_attr('sensor.power_consumption_analyser_workflow_progress', 'remaining') %}
+           {% if attrs %}
+           Abgeschlossen:
+           {% for c in attrs %}
+           - ✅ {{ c }}
+           {% endfor %}
+           {% else %}
+           Noch nichts abgeschlossen.
+           {% endif %}
 
-          {% if rem %}
-          Offen:
-          {% for c in rem %}
-          - ⏳ {{ c }}
-          {% endfor %}
-          {% else %}
-          Keine offenen Schritte.
-          {% endif %}
+           {% if rem %}
+           Offen:
+           {% for c in rem %}
+           - ⏳ {{ c }}
+           {% endfor %}
+           {% else %}
+           Keine offenen Schritte.
+           {% endif %}
 
       # Unterverteilung: RCDs und Sicherungen
       - type: markdown
         title: Unterverteilung
-        content: >-
-          {% set rcds = state_attr('sensor.power_consumption_analyser_rcd_layout', 'rcds') or [] %}
-          {% set layout = state_attr('sensor.power_consumption_analyser_rcd_layout', 'layout') or {} %}
-          {% set done = state_attr('sensor.power_consumption_analyser_rcd_layout', 'done') or [] %}
-          {% set current = state_attr('sensor.power_consumption_analyser_rcd_layout', 'current') %}
-          {% if rcds %}
-          {% for r in rcds %}
-          ### {{ r }}
-          {% set circuits = layout.get(r, []) %}
-          {% if circuits %}
-          {% for c in circuits %}
-          {% set eid = 'sensor.power_consumption_analyser_circuit_' ~ c|lower ~ '_effect' %}
-          {% set eff = states(eid) %}
-          {% if eff in [None, 'unknown', 'unavailable'] %}{% set eff_txt = '—' %}{% else %}{% set eff_txt = eff ~ ' W' %}{% endif %}
-          {% if c in done %}- ✅ {{ c }} ({{ eff_txt }})
-          {% elif c == current %}- 🔶 {{ c }} ({{ eff_txt }})
-          {% else %}- ⏳ {{ c }} ({{ eff_txt }})
-          {% endif %}
-          {% endfor %}
-          {% else %}
-          (keine Sicherungen)
-          {% endif %}
-          {% endfor %}
-          {% else %}
-          (keine RCD-Gruppen gefunden)
-          {% endif %}
+        content: |
+           {% set rcds = state_attr('sensor.power_consumption_analyser_rcd_layout', 'rcds') or [] %}
+           {% set layout = state_attr('sensor.power_consumption_analyser_rcd_layout', 'layout') or {} %}
+           {% set done = state_attr('sensor.power_consumption_analyser_rcd_layout', 'done') or [] %}
+           {% set current = state_attr('sensor.power_consumption_analyser_rcd_layout', 'current') %}
+           {% if rcds %}
+           {% for r in rcds %}
+           ### {{ r }}
+           {% set circuits = layout.get(r, []) %}
+           {% if circuits %}
+           {% for c in circuits %}
+           {% set eid = 'sensor.power_consumption_analyser_circuit_' ~ c|lower ~ '_effect' %}
+           {% set eff = states(eid) %}
+           {% if eff in [None, 'unknown', 'unavailable'] %}{% set eff_txt = '—' %}{% else %}{% set eff_txt = eff ~ ' W' %}{% endif %}
+           {% if c in done %}- ✅ {{ c }} ({{ eff_txt }})
+           {% elif c == current %}- 🔶 {{ c }} ({{ eff_txt }})
+           {% else %}- ⏳ {{ c }} ({{ eff_txt }})
+           {% endif %}
+           {% endfor %}
+           {% else %}
+           (keine Sicherungen)
+           {% endif %}
+           {% endfor %}
+           {% else %}
+           (keine RCD-Gruppen gefunden)
+           {% endif %}
+
+      # (Optional tiles view removed to ensure YAML parses; use static glance cards if needed.)
