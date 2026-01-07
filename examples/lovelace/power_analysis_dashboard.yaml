@@ -44,7 +44,7 @@ views:
             {% set parts = st.split(':') %}
             {% if parts|length >= 2 %}
             Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
-            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
+            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**. (Restzeit: **{{ parts[2] }}**) {% endif %}
             {% else %}
             Messung läuft…
             {% endif %}
@@ -56,14 +56,29 @@ views:
             entity: button.start_workflow
             name: Start
             icon: mdi:play
+            tap_action:
+              action: call-service
+              service: button.press
+              service_data:
+                entity_id: button.start_workflow
           - type: button
             entity: button.stop_workflow
             name: Stopp
             icon: mdi:stop
+            tap_action:
+              action: call-service
+              service: button.press
+              service_data:
+                entity_id: button.stop_workflow
           - type: button
             entity: button.reset_values
             name: Reset
             icon: mdi:backup-restore
+            tap_action:
+              action: call-service
+              service: button.press
+              service_data:
+                entity_id: button.reset_values
 
       # Controls: service buttons (Skip / Restart)
       - type: horizontal-stack
@@ -106,4 +121,3 @@ views:
           - mean
         entities:
           - sensor.power_consumption_analyser_tracked_coverage
-
