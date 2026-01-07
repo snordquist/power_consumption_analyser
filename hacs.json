@@ -3,5 +3,5 @@
   "render_readme": true,
   "zip_release": true,
   "filename": "power_consumption_analyser.zip",
-  "content_in_root": true
+  "content_in_root": false
 }
