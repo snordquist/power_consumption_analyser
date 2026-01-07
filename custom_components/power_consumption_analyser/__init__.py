@@ -63,7 +63,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Load config
     path = entry.data.get(CONF_UNTERVERTEILUNG_PATH)
-    data.safe_circuits = list(entry.data.get(CONF_SAFE_CIRCUITS) or [])
+    # Normalize safe circuits to list
+    raw_safe = entry.data.get(CONF_SAFE_CIRCUITS) or []
+    if isinstance(raw_safe, str):
+        data.safe_circuits = [s.strip() for s in raw_safe.split(",") if s.strip()]
+    else:
+        data.safe_circuits = list(raw_safe)
     data.untracked_number = entry.data.get(CONF_UNTRACKED_NUMBER)
     data.baseline_sensors = dict(entry.data.get(CONF_BASELINE_SENSORS) or {})
 

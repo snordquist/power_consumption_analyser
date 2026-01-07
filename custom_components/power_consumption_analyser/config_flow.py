@@ -10,11 +10,16 @@ class PCAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
+            # Normalize safe circuits from comma-separated string to list
+            safe_str = user_input.get(CONF_SAFE_CIRCUITS, "") or ""
+            if isinstance(safe_str, str):
+                safe_list = [s.strip() for s in safe_str.split(",") if s.strip()]
+                user_input[CONF_SAFE_CIRCUITS] = safe_list
             return self.async_create_entry(title="Power Consumption Analyser", data=user_input)
 
         schema = vol.Schema({
             vol.Required(CONF_UNTERVERTEILUNG_PATH): str,
-            vol.Optional(CONF_SAFE_CIRCUITS, default=[]): [str],
+            vol.Optional(CONF_SAFE_CIRCUITS, default=""): str,  # comma-separated IDs
             vol.Optional(CONF_UNTRACKED_NUMBER, default="number.stromberbrauch_nicht_erfasst"): str,
             vol.Optional(
                 CONF_BASELINE_SENSORS,
