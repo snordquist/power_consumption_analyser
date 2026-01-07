@@ -57,6 +57,8 @@ class PCAData:
         self.stopping_workflow: bool = False
         # Origin of current measurement: 'workflow' or 'manual'
         self.measurement_origin: Optional[str] = None
+        # Timestamp when the current workflow step started (UTC)
+        self.workflow_step_started_at: Optional[object] = None
         # RCD layout/grouping parsed from unterverteilung.yaml
         self.rcd_groups: List[Dict[str, object]] = []
         self.rcd_to_circuits: Dict[str, List[str]] = {}

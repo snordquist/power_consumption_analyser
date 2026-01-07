@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import Optional, List, Dict
 from homeassistant.components import persistent_notification
-from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.core import HomeAssistant
+from datetime import datetime, timezone
 
 from ..const import DOMAIN
 from ..model import PCAData
@@ -34,6 +34,7 @@ async def workflow_finish(hass: HomeAssistant, data: PCAData, reason: Optional[s
         await hass.services.async_call("timer", "cancel", {"entity_id": "timer.pca_step"}, blocking=False)
     except Exception:
         pass
+    data.workflow_step_started_at = None
     if data._workflow_saved_duration is not None:
         data.measure_duration_s = data._workflow_saved_duration
         data._workflow_saved_duration = None
@@ -82,6 +83,10 @@ async def workflow_start_current_step(hass: HomeAssistant, data: PCAData) -> Non
         await hass.services.async_call("timer", "start", {"entity_id": "timer.pca_step", "duration": data.workflow_wait_s}, blocking=False)
     except Exception:
         pass
+    # Record step start
+    data.workflow_step_started_at = datetime.now(timezone.utc)
+    from homeassistant.helpers.dispatcher import async_dispatcher_send
+    async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
 
 async def workflow_advance(hass: HomeAssistant, data: PCAData) -> None:
     if not data.workflow_active:
