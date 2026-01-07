@@ -20,8 +20,6 @@ for f in $REQUIRED; do
 done
 
 rm -f "${OUT_ZIP}"
-cd "${REPO_ROOT}"
-# Create a temp folder with power_consumption_analyser/ as top-level
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/power_consumption_analyser"

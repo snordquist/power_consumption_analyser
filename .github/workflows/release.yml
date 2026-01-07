@@ -17,7 +17,7 @@ jobs:
         run: |
           test -d custom_components/power_consumption_analyser
           test -f custom_components/power_consumption_analyser/manifest.json
-      - name: Create ZIP asset with top-level folder
+      - name: Create ZIP asset (domain folder at root)
         run: |
           mkdir -p stage/power_consumption_analyser
           rsync -a custom_components/power_consumption_analyser/ stage/power_consumption_analyser/
