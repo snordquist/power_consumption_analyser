@@ -1,7 +1,9 @@
 {
   "domain": "power_consumption_analyser",
   "name": "Power Consumption Analyser",
-  "documentation": "",
+  "version": "0.0.3",
+  "documentation": "https://github.com/snordquist/power_consumption_analyser",
+  "issue_tracker": "https://github.com/snordquist/power_consumption_analyser/issues",
   "requirements": [
     "pyyaml==6.0.2",
     "voluptuous==0.13.1"
