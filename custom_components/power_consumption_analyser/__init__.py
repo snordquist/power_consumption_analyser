@@ -375,6 +375,16 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         await _workflow_start_current_step(hass, data)
         async_dispatcher_send(hass, f"{DOMAIN}_workflow_state")
 
+    async def handle_workflow_finish_current(call: ServiceCall):
+        """Finish the current measurement step now and advance (used by dashboard 'Weiter')."""
+        if not data.workflow_active:
+            return
+        if data.workflow_index >= len(data.workflow_queue):
+            return
+        current = data.workflow_queue[data.workflow_index]
+        switch_eid = f"switch.measure_circuit_{current.lower()}"
+        await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
+
     hass.services.async_register(DOMAIN, "select_circuit", handle_select_circuit)
     hass.services.async_register(DOMAIN, "confirm_off", handle_confirm_off)
     hass.services.async_register(DOMAIN, "confirm_on", handle_confirm_on)
@@ -386,6 +396,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
     hass.services.async_register(DOMAIN, "workflow_skip_current", handle_workflow_skip_current)
     hass.services.async_register(DOMAIN, "workflow_stop", handle_workflow_stop)
     hass.services.async_register(DOMAIN, "workflow_restart", handle_workflow_restart)
+    hass.services.async_register(DOMAIN, "workflow_finish_current", handle_workflow_finish_current)
 
 async def _ensure_labels_for_energy_meters(hass: HomeAssistant, entity_ids: List[str]) -> None:
     """Ensure the device for each entity has the 'EnergyMeter' label."""

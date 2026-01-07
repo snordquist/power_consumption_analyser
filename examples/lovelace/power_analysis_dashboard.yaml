@@ -60,6 +60,12 @@ views:
           entities:
             - entity: timer.pca_step
               name: Restzeit
+            - type: button
+              name: Weiter
+              icon: mdi:arrow-right
+              tap_action:
+                action: call-service
+                service: power_consumption_analyser.workflow_finish_current
 
       # Controls: global device buttons
       - type: horizontal-stack
@@ -172,50 +178,14 @@ views:
           {% set circuits = layout.get(r, []) %}
           {% if circuits %}
           {% for c in circuits %}
-          {% if c in done %}- ✅ {{ c }}
-          {% elif c == current %}- 🔶 {{ c }}
-          {% else %}- ⏳ {{ c }}
+          {% set eid = 'sensor.power_consumption_analyser_circuit_' ~ c|lower ~ '_effect' %}
+          {% set eff = states(eid) %}
+          {% if eff in [None, 'unknown', 'unavailable'] %}{% set eff_txt = '—' %}{% else %}{% set eff_txt = eff ~ ' W' %}{% endif %}
+          {% if c in done %}- ✅ {{ c }} ({{ eff_txt }})
+          {% elif c == current %}- 🔶 {{ c }} ({{ eff_txt }})
+          {% else %}- ⏳ {{ c }} ({{ eff_txt }})
           {% endif %}
           {% endfor %}
-          {% else %}
-          (keine Sicherungen)
-          {% endif %}
-          {% endfor %}
-          {% else %}
-          (keine RCD-Gruppen gefunden)
-          {% endif %}
-
-      # Unterverteilung: RCDs und Sicherungen (Grid)
-      - type: markdown
-        title: Unterverteilung (Grid)
-        content: >-
-          {% set rcds = state_attr('sensor.power_consumption_analyser_rcd_layout', 'rcds') or [] %}
-          {% set layout = state_attr('sensor.power_consumption_analyser_rcd_layout', 'layout') or {} %}
-          {% set done = state_attr('sensor.power_consumption_analyser_rcd_layout', 'done') or [] %}
-          {% set current = state_attr('sensor.power_consumption_analyser_rcd_layout', 'current') %}
-          {% set cols = 4 %}
-          {% if rcds %}
-          {% for r in rcds %}
-          #### {{ r }}
-          {% set circuits = layout.get(r, []) %}
-          {% if circuits %}
-          <table>
-          {% for i in range(0, circuits|length, cols) %}
-            <tr>
-            {% for c in circuits[i:i+cols] %}
-              <td style="padding:6px 12px;">
-                {% if c in done %}
-                  ✅ <strong>{{ c }}</strong>
-                {% elif c == current %}
-                  🔶 <strong>{{ c }}</strong>
-                {% else %}
-                  ⏳ <strong>{{ c }}</strong>
-                {% endif %}
-              </td>
-            {% endfor %}
-            </tr>
-          {% endfor %}
-          </table>
           {% else %}
           (keine Sicherungen)
           {% endif %}
