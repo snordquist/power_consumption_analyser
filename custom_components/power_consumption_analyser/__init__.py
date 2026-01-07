@@ -114,6 +114,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await _workflow_advance(hass, data)
     hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished)
 
+    # Handle mobile app notification actions to control the workflow
+    async def _on_mobile_action(event):
+        action = event.data.get("action") or event.data.get("actionName")
+        if not action:
+            return
+        act = str(action).upper()
+        if act == "PCA_SKIP":
+            await hass.services.async_call(DOMAIN, "workflow_skip_current", {}, blocking=False)
+        elif act == "PCA_STOP":
+            await hass.services.async_call(DOMAIN, "workflow_stop", {}, blocking=False)
+        elif act == "PCA_RESTART":
+            await hass.services.async_call(DOMAIN, "workflow_restart", {}, blocking=False)
+        elif act == "PCA_FINISH":
+            # Finish the current measurement immediately and advance
+            current = data.workflow_queue[data.workflow_index] if (data.workflow_active and data.workflow_index < len(data.workflow_queue)) else None
+            if current:
+                switch_eid = f"switch.measure_circuit_{current.lower()}"
+                try:
+                    await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
+                except Exception:
+                    pass
+        # else: ignore
+    hass.bus.async_listen("mobile_app_notification_action", _on_mobile_action)
+
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
