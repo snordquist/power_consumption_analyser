@@ -1,0 +1,109 @@
+# Lovelace "Power Analysis" Wizard view
+# Use this as a view inside a YAML dashboard, or copy cards into your UI dashboard via Raw configuration editor.
+# Notes:
+# - Buttons use the provided button entities/services from the integration.
+# - The instruction card shows the current circuit and wait time during measurement.
+# - Add/remove circuit effect sensors to match your wiring.
+
+views:
+  - title: Power Analysis
+    path: power-analysis
+    icon: mdi:flash
+    badges: []
+    cards:
+      # Status section
+      - type: entities
+        title: Status
+        show_header_toggle: false
+        entities:
+          - entity: sensor.power_consumption_analyser_measurement_status
+            name: Measurement Status
+          - entity: sensor.power_consumption_analyser_analysis_status
+            name: Analysis Status
+          - entity: sensor.power_consumption_analyser_untracked_power
+            name: Untracked Power
+          - entity: sensor.power_consumption_analyser_tracked_power_sum
+            name: Tracked Power Sum
+          - entity: sensor.power_consumption_analyser_tracked_coverage
+            name: Tracked Coverage
+          - entity: sensor.power_consumption_analyser_tracked_untracked_ratio
+            name: Tracked/Untracked Ratio
+          - entity: sensor.power_consumption_analyser_measurement_summary
+            name: Measurement Summary
+
+      # Instruction (only while measuring)
+      - type: conditional
+        conditions:
+          - entity: sensor.power_consumption_analyser_measurement_status
+            state_not: idle
+        card:
+          type: markdown
+          title: Anleitung
+          content: >-
+            {% set st = states('sensor.power_consumption_analyser_measurement_status') %}
+            {% set parts = st.split(':') %}
+            {% if parts|length >= 2 %}
+            Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
+            {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
+            {% else %}
+            Messung läuft…
+            {% endif %}
+
+      # Controls: global device buttons
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: button.start_workflow
+            name: Start
+            icon: mdi:play
+          - type: button
+            entity: button.stop_workflow
+            name: Stopp
+            icon: mdi:stop
+          - type: button
+            entity: button.reset_values
+            name: Reset
+            icon: mdi:backup-restore
+
+      # Controls: service buttons (Skip / Restart)
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Überspringen
+            icon: mdi:skip-next
+            tap_action:
+              action: call-service
+              service: power_consumption_analyser.workflow_skip_current
+          - type: button
+            name: Neu starten
+            icon: mdi:restart
+            tap_action:
+              action: call-service
+              service: power_consumption_analyser.workflow_restart
+
+      # Effects per circuit (add/remove your circuit sensors)
+      - type: entities
+        title: Effekte je Stromkreis (Beispiele – bitte anpassen)
+        show_header_toggle: false
+        entities:
+          - sensor.power_consumption_analyser_circuit_1f1_effect
+          - sensor.power_consumption_analyser_circuit_1f2_effect
+          - sensor.power_consumption_analyser_circuit_2f7_effect
+          - sensor.power_consumption_analyser_circuit_3f11_effect
+
+      # History / graphs
+      - type: history-graph
+        title: Lastverlauf (6h)
+        hours_to_show: 6
+        entities:
+          - sensor.power_consumption_analyser_untracked_power
+          - sensor.power_consumption_analyser_tracked_power_sum
+      - type: statistics-graph
+        title: Abdeckung (24h)
+        period: hour
+        days_to_show: 1
+        stat_types:
+          - mean
+        entities:
+          - sensor.power_consumption_analyser_tracked_coverage
+

@@ -73,3 +73,19 @@ Defaults in config flow:
 Notes:
 - Safe circuits cannot be selected for analysis.
 - No automatic switching is performed; all steps rely on manual confirmation.
+
+## Lovelace "Power Analysis" Wizard dashboard
+A ready-to-use Lovelace view is provided at `examples/lovelace/power_analysis_dashboard.yaml`.
+
+Use it in one of two ways:
+- YAML dashboard: reference the file under a dashboard in your configuration (Resources/Storage YAML).
+- UI dashboard: copy the cards from this file via the Raw configuration editor into a new view.
+
+What it includes:
+- Status: measurement status, analysis status, un/tracked power, coverage, ratio, summary
+- Instruction card shown while measuring (which circuit to switch off, and wait time)
+- Controls: Start/Stop/Reset buttons (device buttons) and service buttons for skip/restart
+- Effects per circuit (example sensors included — adjust to your circuit IDs)
+- History graphs for quick insights
+
+Tip: Set a default mobile notify service via the service `power_consumption_analyser.set_default_notify_service` to enable actionable notifications during the workflow.
