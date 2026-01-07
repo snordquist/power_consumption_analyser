@@ -19,15 +19,9 @@ for f in $REQUIRED; do
   fi
 done
 
-# Create a temp staging dir with files at ZIP root
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
-
-cp -R "${SRC_DIR}/." "$STAGE/"
-
 rm -f "${OUT_ZIP}"
-cd "$STAGE"
-zip -r "${OUT_ZIP}" . \
+cd "${SRC_DIR}"
+zip -r "${OUT_ZIP}" * \
   -x "**/__pycache__/**" "**/*.pyc" "**/.DS_Store" "**/.git/**"
 
 echo "Built release asset: ${OUT_ZIP}"
