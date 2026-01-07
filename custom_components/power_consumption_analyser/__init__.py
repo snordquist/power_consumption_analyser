@@ -17,6 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.components import persistent_notification
 
 from .const import DOMAIN, CONF_UNTERVERTEILUNG_PATH, CONF_SAFE_CIRCUITS, CONF_BASELINE_SENSORS, CONF_UNTRACKED_NUMBER, OPT_ENERGY_METERS_MAP, PLATFORMS
+from .const import OPT_DEFAULT_NOTIFY_SERVICE
 from .model import PCAData, Circuit
 from .services.helpers import state_float as _state_float, calc_tracked_power as _calc_tracked_power
 from .services.workflow import workflow_start_current_step as _workflow_start_current_step, workflow_advance as _workflow_advance, workflow_finish as _workflow_finish, notify as _notify, simple_notify as _simple_notify
@@ -262,7 +263,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         circuits = call.data.get("circuits")
         skip = set(call.data.get("skip_circuits") or [])
         wait_s = int(call.data.get("wait_s") or data.measure_duration_s)
-        notify_service = call.data.get("notify_service")
+        notify_service = call.data.get("notify_service") or entry.options.get(OPT_DEFAULT_NOTIFY_SERVICE)
         # Determine queue: provided or all except safe and skipped
         if circuits:
             queue = [c for c in circuits if c in data.circuits and c not in data.safe_circuits and c not in skip]
@@ -281,6 +282,15 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
         data.measure_duration_s = data.workflow_wait_s
         # Start first step
         await _workflow_start_current_step(hass, data)
+
+    async def handle_set_default_notify(call: ServiceCall):
+        """Persist a default notify service used for workflow notifications with actions."""
+        svc = call.data.get("notify_service")
+        if not svc or not isinstance(svc, str):
+            _LOGGER.warning("notify_service missing or invalid")
+            return
+        hass.config_entries.async_update_entry(entry, options={**entry.options, OPT_DEFAULT_NOTIFY_SERVICE: svc})
+        await _simple_notify(hass, data, f"Standard Benachrichtigungsdienst gesetzt: {svc}")
 
     async def handle_workflow_skip_current(call: ServiceCall):
         if not data.workflow_active:
@@ -351,6 +361,7 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
     hass.services.async_register(DOMAIN, "circuit_unlink_energy_meter", handle_unlink_energy_meter)
     hass.services.async_register(DOMAIN, "reload", handle_reload)
     hass.services.async_register(DOMAIN, "start_guided_analysis", handle_workflow_start)
+    hass.services.async_register(DOMAIN, "set_default_notify_service", handle_set_default_notify)
     hass.services.async_register(DOMAIN, "workflow_skip_current", handle_workflow_skip_current)
     hass.services.async_register(DOMAIN, "workflow_stop", handle_workflow_stop)
     hass.services.async_register(DOMAIN, "workflow_restart", handle_workflow_restart)
