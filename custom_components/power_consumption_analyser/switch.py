@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback, HassJob
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
+from homeassistant.helpers.entity import DeviceInfo
 
 from . import DOMAIN, PCAData
 
@@ -28,6 +29,11 @@ class CircuitMeasureSwitch(SwitchEntity):
         self._is_on = False
         self._attr_name = f"Measure Circuit {circuit_id}"
         self._attr_unique_id = f"{DOMAIN}_measure_{circuit_id.lower()}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
         self._unsub_state: Optional[Callable[[], None]] = None
         self._unsub_timer: Optional[Callable[[], None]] = None
 
