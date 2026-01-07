@@ -11,8 +11,14 @@ pytest_plugins = ["pytest_homeassistant_custom_component"]
 # Ignore legacy files after test split to avoid duplicate module basenames
 def pytest_ignore_collect(collection_path: Path, config):
     p = str(collection_path)
-#    if p.endswith("/tests/test_summary_sensor.py") or p.endswith("\\tests\\test_summary_sensor.py"):
-#        return True
+    if p.endswith("/tests/test_summary_sensor.py") or p.endswith("\\tests\\test_summary_sensor.py"):
+        return True
+    if p.endswith("/tests/test_button_and_workflow.py") or p.endswith("\\tests\\test_button_and_workflow.py"):
+        return True
+    if p.endswith("/tests/test_more_sensors.py") or p.endswith("\\tests\\test_more_sensors.py"):
+        return True
+    if p.endswith("/tests/test_setup_and_sensors.py") or p.endswith("\\tests\\test_setup_and_sensors.py"):
+        return True
     return False
 
 @pytest.fixture
