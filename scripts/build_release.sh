@@ -20,8 +20,14 @@ for f in $REQUIRED; do
 done
 
 rm -f "${OUT_ZIP}"
-cd "${SRC_DIR}"
-zip -r "${OUT_ZIP}" * \
+cd "${REPO_ROOT}"
+# Create a temp folder with power_consumption_analyser/ as top-level
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/power_consumption_analyser"
+cp -R "${SRC_DIR}/." "$STAGE/power_consumption_analyser/"
+cd "$STAGE"
+zip -r "${OUT_ZIP}" power_consumption_analyser \
   -x "**/__pycache__/**" "**/*.pyc" "**/.DS_Store" "**/.git/**"
 
 echo "Built release asset: ${OUT_ZIP}"
