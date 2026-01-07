@@ -12,6 +12,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
     entities: List[ButtonEntity] = []
     # Global device-level buttons
+    entities.append(StartWorkflowButton(data))
     entities.append(StopWorkflowButton(data))
     entities.append(ResetValuesButton(data))
     # Per-circuit buttons
@@ -28,6 +29,18 @@ class _BaseDeviceButton(ButtonEntity):
             name="Power Consumption Analyser",
             manufacturer="Custom",
         )
+
+class StartWorkflowButton(_BaseDeviceButton):
+    def __init__(self, data: PCAData):
+        super().__init__(data)
+        self._attr_name = "Start Workflow"
+        self._attr_unique_id = f"{DOMAIN}_start_workflow"
+        self._attr_icon = "mdi:play"
+    @property
+    def suggested_object_id(self) -> str:
+        return "start_workflow"
+    async def async_press(self) -> None:
+        await self.hass.services.async_call(DOMAIN, "start_guided_analysis", {}, blocking=False)
 
 class StopWorkflowButton(_BaseDeviceButton):
     def __init__(self, data: PCAData):
