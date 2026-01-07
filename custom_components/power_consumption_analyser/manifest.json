@@ -2,7 +2,6 @@
   "domain": "power_consumption_analyser",
   "name": "Power Consumption Analyser",
   "documentation": "",
-  "issue_tracker": "",
   "requirements": [
     "pyyaml==6.0.2",
     "voluptuous==0.13.1"

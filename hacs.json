@@ -1,0 +1,7 @@
+{
+  "name": "Power Consumption Analyser",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "power_consumption_analyser.zip",
+  "content_in_root": false
+}

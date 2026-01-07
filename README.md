@@ -36,6 +36,25 @@ Events:
 - `power_consumption_analyser.circuit_off_confirmed` (with measured values)
 - `power_consumption_analyser.circuit_on_confirmed`
 
+## Install via HACS
+HACS discovers custom integrations from GitHub repositories.
+
+- Quick install link: https://hacs.xyz/docs/faq/custom_repositories/ (Add this repo as a Custom Repository under Integrations)
+- Direct add link (copy/paste into HACS → Custom repositories):
+  - Repository URL: https://github.com/snordquist/power_consumption_analyser
+  - Category: Integration
+
+Public repo:
+1. Ensure the integration lives under `custom_components/power_consumption_analyser`.
+2. Include `hacs.json` at the repo root.
+3. Tag a release (e.g., `v0.1.0`).
+4. In Home Assistant: HACS → Integrations → 3 dots → Custom repositories → Add your repo URL (Category: Integration) → Install → Restart.
+
+Post-install:
+- Restart Home Assistant.
+- Add the integration via Settings → Devices & Services → Add Integration → Power Consumption Analyser.
+- Complete the config flow.
+
 ## Energy meters and circuits
 - Label: Devices that track energy should carry the label `energy_meter`. The integration attempts to ensure this label exists and is applied to devices of linked entity IDs.
 - Mapping: Each energy meter entity must be assigned to a circuit (it becomes unavailable when its circuit is turned off). You can:
