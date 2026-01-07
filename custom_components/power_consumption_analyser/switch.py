@@ -8,6 +8,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback, HassJob
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from . import DOMAIN, PCAData
 
@@ -21,7 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
 
 
 class CircuitMeasureSwitch(SwitchEntity):
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
 
     def __init__(self, data: PCAData, circuit_id: str):
         self.data = data
@@ -41,13 +42,25 @@ class CircuitMeasureSwitch(SwitchEntity):
     def is_on(self) -> bool:
         return self._is_on
 
+    @property
+    def suggested_object_id(self) -> str:
+        return f"measure_circuit_{self._circuit_id.lower()}"
+
     async def async_turn_on(self, **kwargs) -> None:
         # Start measurement: reset samples and record baseline (current untracked)
         if self._is_on:
             return
-        self._is_on = True
         hass = self.hass
+        # Abort starts if integration is blocking or stopping workflow (race safety)
+        if getattr(self.data, "block_measure_starts", False) or getattr(self.data, "stopping_workflow", False):
+            return
+        # Double-check just before changing state to avoid race
+        if getattr(self.data, "block_measure_starts", False) or getattr(self.data, "stopping_workflow", False):
+            return
+        self._is_on = True
         self.data.measuring_circuit = self._circuit_id
+        # immediate dispatcher update
+        async_dispatcher_send(hass, f"{DOMAIN}_measure_state")
         hass.bus.async_fire(f"{DOMAIN}.measurement_started", {"circuit_id": self._circuit_id, "duration_s": self.data.measure_duration_s})
         # compute current untracked
         untracked = _current_untracked(hass, self.data)
@@ -122,6 +135,9 @@ class CircuitMeasureSwitch(SwitchEntity):
             del hist[: len(hist) - maxlen]
         # clear measuring flag
         self.data.measuring_circuit = None
+        self.data.measurement_origin = None
+        # immediate dispatcher update
+        async_dispatcher_send(self.hass, f"{DOMAIN}_measure_state")
         # fire event for sensors to update
         self.hass.bus.async_fire(f"{DOMAIN}.measure_finished", {
             "circuit_id": self._circuit_id,

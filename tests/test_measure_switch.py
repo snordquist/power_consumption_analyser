@@ -35,6 +35,7 @@ async def test_measure_switch_flow(hass: HomeAssistant, sample_yaml, enable_cust
 
     # Turn on the switch → starts measurement window
     await hass.services.async_call("switch", "turn_on", {"entity_id": switch_entity_id}, blocking=True)
+    await hass.async_block_till_done()
 
     status = hass.states.get("sensor.power_consumption_analyser_measurement_status")
     assert status is not None and status.state.startswith("measuring:")

@@ -15,6 +15,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers import entity_registry as er, device_registry as dr, label_registry as lr
 from homeassistant.components import persistent_notification
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ CONF_UNTRACKED_NUMBER = "untracked_number"
 # Options key to persist dynamic energy meter mappings
 OPT_ENERGY_METERS_MAP = "energy_meters_map"  # entity_id -> circuit_id
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON]
 
 class Circuit:
     def __init__(self, id: str, phase: str, breaker: str, rating: str, description: str, energy_meters: Optional[List[str]] = None):
@@ -76,6 +77,11 @@ class PCAData:
         self.workflow_skip_circuits: Set[str] = set()
         self.workflow_notification_id: str = f"{DOMAIN}_workflow"
         self.workflow_ignore_result_for: Optional[str] = None
+        # Guard to block starts while stopping workflow
+        self.block_measure_starts: bool = False
+        self.stopping_workflow: bool = False
+        # Origin of current measurement: 'workflow' or 'manual'
+        self.measurement_origin: Optional[str] = None
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
@@ -333,12 +339,37 @@ def register_services(hass: HomeAssistant, data: PCAData, entry: ConfigEntry) ->
     async def handle_workflow_stop(call: ServiceCall):
         if not data.workflow_active:
             return
-        # Try stopping current measurement
-        if data.workflow_index < len(data.workflow_queue):
-            current = data.workflow_queue[data.workflow_index]
-            switch_eid = f"switch.measure_circuit_{current.lower()}"
-            await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=False)
-        await _workflow_finish(hass, data, reason="abgebrochen")
+        # Mark inactive immediately and block new starts to prevent races
+        data.workflow_active = False
+        data.block_measure_starts = True
+        data.stopping_workflow = True
+        # Stop any ongoing measurements synchronously
+        for cid in list(data.circuits.keys()):
+            switch_eid = f"switch.measure_circuit_{cid.lower()}"
+            try:
+                await hass.services.async_call("switch", "turn_off", {"entity_id": switch_eid}, blocking=True)
+            except Exception:
+                pass
+        # Restore duration if altered by workflow
+        if data._workflow_saved_duration is not None:
+            data.measure_duration_s = data._workflow_saved_duration
+            data._workflow_saved_duration = None
+        # Force-clear measuring status and notify sensors
+        data.measuring_circuit = None
+        data.measurement_origin = None
+        async_dispatcher_send(hass, f"{DOMAIN}_measure_state")
+        # Cleanup workflow fields
+        data.workflow_queue = []
+        data.workflow_index = 0
+        data.workflow_wait_s = 0
+        data.workflow_notify_service = None
+        data.workflow_skip_circuits = set()
+        data.workflow_ignore_result_for = None
+        # Unblock starts
+        data.block_measure_starts = False
+        data.stopping_workflow = False
+        # Notify user
+        await _notify(hass, data, "Workflow abgebrochen.", title="PCA Workflow Ende")
 
     async def handle_workflow_restart(call: ServiceCall):
         if not data.workflow_active:
@@ -563,9 +594,10 @@ async def _workflow_start_current_step(hass: HomeAssistant, data: PCAData) -> No
     if nxt:
         msg += f" Danach folgt: {nxt}."
     await _notify(hass, data, msg, title="PCA Schritt gestartet")
-    # Start measurement via switch turn_on
+    # Mark origin and start measurement via switch turn_on
+    data.measurement_origin = "workflow"
     switch_eid = f"switch.measure_circuit_{current.lower()}"
-    await hass.services.async_call("switch", "turn_on", {"entity_id": switch_eid}, blocking=False)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": switch_eid}, blocking=True)
 
 async def _workflow_advance(hass: HomeAssistant, data: PCAData) -> None:
     if not data.workflow_active:

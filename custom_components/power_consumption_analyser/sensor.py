@@ -7,6 +7,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from . import DOMAIN, PCAData
 
@@ -221,19 +222,24 @@ class MeasurementStatusSensor(BasePCASensor):
 
     @property
     def native_value(self) -> str:
+        if getattr(self.data, "stopping_workflow", False):
+            return "idle"
         if self.data.measuring_circuit:
             return f"measuring:{self.data.measuring_circuit}:{self.data.measure_duration_s}s"
         return "idle"
 
     async def async_added_to_hass(self) -> None:
         @callback
-        def _on_started(event):
-            self.async_schedule_update_ha_state()
+        def _on_event(event):
+            self.async_write_ha_state()
         @callback
-        def _on_finished(event):
-            self.async_schedule_update_ha_state()
-        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measurement_started", _on_started))
-        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_finished))
+        def _on_signal(*_):
+            self.async_write_ha_state()
+        # Bus events
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measurement_started", _on_event))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_event))
+        # Dispatcher immediate signal
+        self.async_on_remove(async_dispatcher_connect(self.hass, f"{DOMAIN}_measure_state", _on_signal))
 
 class CircuitEffectSensor(BasePCASensor):
     _attr_native_unit_of_measurement = "W"
