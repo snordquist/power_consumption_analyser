@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from statistics import mean
 from typing import Optional, Callable, List
+from datetime import datetime, timezone
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback, HassJob
@@ -40,6 +41,8 @@ class CircuitMeasureSwitch(SwitchEntity):
             return
         self._is_on = True
         hass = self.hass
+        self.data.measuring_circuit = self._circuit_id
+        hass.bus.async_fire(f"{DOMAIN}.measurement_started", {"circuit_id": self._circuit_id, "duration_s": self.data.measure_duration_s})
         # compute current untracked
         untracked = _current_untracked(hass, self.data)
         self.data.measure_baseline[self._circuit_id] = untracked
@@ -96,6 +99,23 @@ class CircuitMeasureSwitch(SwitchEntity):
         avg_untracked = mean(samples) if samples else _current_untracked(self.hass, self.data)
         effect = baseline - avg_untracked
         self.data.measure_results[self._circuit_id] = effect
+        # Record history
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "effect": round(effect, 2),
+            "baseline": round(baseline, 2),
+            "avg_untracked": round(avg_untracked, 2),
+            "samples": len(samples),
+            "duration_s": self.data.measure_duration_s,
+        }
+        hist = self.data.measure_history.setdefault(self._circuit_id, [])
+        hist.append(entry)
+        # Cap history size
+        maxlen = max(1, self.data.measure_history_max)
+        if len(hist) > maxlen:
+            del hist[: len(hist) - maxlen]
+        # clear measuring flag
+        self.data.measuring_circuit = None
         # fire event for sensors to update
         self.hass.bus.async_fire(f"{DOMAIN}.measure_finished", {
             "circuit_id": self._circuit_id,

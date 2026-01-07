@@ -28,6 +28,10 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     # Per-circuit effect sensors
     for cid in data.circuits.keys():
         entities.append(CircuitEffectSensor(data, cid))  # type: ignore[list-item]
+    # Measurement status
+    entities.append(MeasurementStatusSensor(data))  # type: ignore[list-item]
+    # Summary sensor
+    entities.append(SummaryEffectSensor(data))  # type: ignore[list-item]
     async_add_entities(entities, True)
 
 class BasePCASensor(SensorEntity):
@@ -208,6 +212,29 @@ class AnalysisStatusSensor(BasePCASensor):
             return f"active:{self.data.current_circuit}"
         return "idle"
 
+class MeasurementStatusSensor(BasePCASensor):
+    _attr_name = "Measurement Status"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_measurement_status"
+
+    @property
+    def native_value(self) -> str:
+        if self.data.measuring_circuit:
+            return f"measuring:{self.data.measuring_circuit}:{self.data.measure_duration_s}s"
+        return "idle"
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _on_started(event):
+            self.async_schedule_update_ha_state()
+        @callback
+        def _on_finished(event):
+            self.async_schedule_update_ha_state()
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measurement_started", _on_started))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_finished))
+
 class CircuitEffectSensor(BasePCASensor):
     _attr_native_unit_of_measurement = "W"
 
@@ -227,11 +254,81 @@ class CircuitEffectSensor(BasePCASensor):
             return 0.0
         return round(val, 2)
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        hist = self.data.measure_history.get(self._circuit_id, [])
+        # Compute stats
+        effects = [h.get("effect", 0.0) for h in hist]
+        count = len(effects)
+        avg = round(sum(effects) / count, 2) if count else 0.0
+        mn = round(min(effects), 2) if effects else 0.0
+        mx = round(max(effects), 2) if effects else 0.0
+        return {
+            "history_size": len(hist),
+            "history_max": self.data.measure_history_max,
+            "avg_effect": avg,
+            "min_effect": mn,
+            "max_effect": mx,
+            "last": hist[-1] if hist else None,
+        }
+
     async def async_added_to_hass(self) -> None:
         @callback
         def _on_measure_finished(event):
             if event.data.get("circuit_id") == self._circuit_id:
                 self.async_schedule_update_ha_state()
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished))
+
+class SummaryEffectSensor(BasePCASensor):
+    _attr_name = "Measurement Summary"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_summary"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        # Optional single-number summary: the maximum average effect across circuits
+        max_avg = 0.0
+        for cid, hist in self.data.measure_history.items():
+            effects = [h.get("effect", 0.0) for h in hist]
+            if effects:
+                avg = sum(effects) / len(effects)
+                if avg > max_avg:
+                    max_avg = avg
+        return round(max_avg, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        last_effects = {}
+        avg_effects = {}
+        total_entries = 0
+        for cid, hist in self.data.measure_history.items():
+            total_entries += len(hist)
+            if hist:
+                last_effects[cid] = hist[-1].get("effect", 0.0)
+                effects = [h.get("effect", 0.0) for h in hist]
+                avg_effects[cid] = round(sum(effects) / len(effects), 2)
+            else:
+                last_effects[cid] = 0.0
+                avg_effects[cid] = 0.0
+        # sort top 3
+        top3_avg = sorted(avg_effects.items(), key=lambda x: x[1], reverse=True)[:3]
+        top3_last = sorted(last_effects.items(), key=lambda x: x[1], reverse=True)[:3]
+        return {
+            "circuits": list(self.data.circuits.keys()),
+            "last_effects": last_effects,
+            "avg_effects": avg_effects,
+            "top3_by_avg": [{"circuit_id": k, "avg_effect": v} for k, v in top3_avg],
+            "top3_by_last": [{"circuit_id": k, "last_effect": v} for k, v in top3_last],
+            "history_entries_total": total_entries,
+            "history_max_per_circuit": self.data.measure_history_max,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _on_measure_finished(event):
+            self.async_schedule_update_ha_state()
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished))
 
 class TrackedCoverageSensor(BasePCASensor):

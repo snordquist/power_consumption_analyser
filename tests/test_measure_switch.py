@@ -36,6 +36,9 @@ async def test_measure_switch_flow(hass: HomeAssistant, sample_yaml, enable_cust
     # Turn on the switch → starts measurement window
     await hass.services.async_call("switch", "turn_on", {"entity_id": switch_entity_id}, blocking=True)
 
+    status = hass.states.get("sensor.power_consumption_analyser_measurement_status")
+    assert status is not None and status.state.startswith("measuring:")
+
     # During measurement: change untracked by changing meter/home values
     hass.states.async_set("sensor.kitchen_plug_power", 150)
     await hass.async_block_till_done()
@@ -52,3 +55,5 @@ async def test_measure_switch_flow(hass: HomeAssistant, sample_yaml, enable_cust
     # The effect sign will depend on sample order; ensure it returns a float
     float(effect_state.state)
 
+    status = hass.states.get("sensor.power_consumption_analyser_measurement_status")
+    assert status is not None and status.state == "idle"

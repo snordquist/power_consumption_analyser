@@ -40,3 +40,31 @@ class PCAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(TRACKED_SUM_KEY, default="sensor.tracked_power_sum"): str,
         })
         return self.async_show_form(step_id="user", data_schema=schema)
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        return await self.async_step_user(user_input)
+
+    async def async_step_user(self, user_input=None):
+        if user_input is not None:
+            # Persist options
+            options = dict(self._entry.options)
+            options["measure_duration_s"] = int(user_input.get("measure_duration_s", 30))
+            options["history_size"] = int(user_input.get("history_size", 50))
+            return self.async_create_entry(title="Options", data=options)
+
+        current = self._entry.options.get("measure_duration_s", 30)
+        current_hx = self._entry.options.get("history_size", 50)
+        schema = vol.Schema({
+            vol.Optional("measure_duration_s", default=current): int,
+            vol.Optional("history_size", default=current_hx): int,
+        })
+        return self.async_show_form(step_id="user", data_schema=schema)
+
+
+async def async_get_options_flow(config_entry):
+    return OptionsFlowHandler(config_entry)

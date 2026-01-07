@@ -61,6 +61,10 @@ class PCAData:
         self.measure_timers: Dict[str, Optional[callable]] = {}
         self.measure_results: Dict[str, float] = {}
         self.measure_duration_s: int = 30
+        self.measuring_circuit: Optional[str] = None
+        # History of measurements per circuit
+        self.measure_history: Dict[str, List[dict]] = {}
+        self.measure_history_max: int = 50
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
@@ -130,6 +134,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     register_services(hass, data, entry)
+
+    # Apply options and listen for updates
+    _apply_options_to_data(data, entry)
+    entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     return True
 
@@ -411,3 +419,22 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
                 hass.bus.async_fire(f"{DOMAIN}.label_meters_changed", {"added": [], "removed": removed})
 
     hass.bus.async_listen("device_registry_updated", _on_device_registry_updated)
+
+@callback
+def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
+    try:
+        md = int(entry.options.get("measure_duration_s", data.measure_duration_s))
+        data.measure_duration_s = max(5, min(3600, md))
+    except Exception:
+        pass
+    try:
+        hx = int(entry.options.get("history_size", data.measure_history_max))
+        data.measure_history_max = max(1, min(500, hx))
+    except Exception:
+        pass
+
+async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    data: PCAData = hass.data.get(DOMAIN)
+    if not data:
+        return
+    _apply_options_to_data(data, entry)
