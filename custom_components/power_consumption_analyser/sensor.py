@@ -25,6 +25,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         UnavailableMeterCountSensor(data),
         AnalysisStatusSensor(data),
     ]
+    # Per-circuit effect sensors
+    for cid in data.circuits.keys():
+        entities.append(CircuitEffectSensor(data, cid))  # type: ignore[list-item]
     async_add_entities(entities, True)
 
 class BasePCASensor(SensorEntity):
@@ -204,6 +207,32 @@ class AnalysisStatusSensor(BasePCASensor):
         if self.data.step_active and self.data.current_circuit:
             return f"active:{self.data.current_circuit}"
         return "idle"
+
+class CircuitEffectSensor(BasePCASensor):
+    _attr_native_unit_of_measurement = "W"
+
+    def __init__(self, data: PCAData, circuit_id: str):
+        super().__init__(data)
+        self._circuit_id = circuit_id
+        self._attr_name = f"Circuit {circuit_id} Effect"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{DOMAIN}_circuit_{self._circuit_id.lower()}_effect"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        val = self.data.measure_results.get(self._circuit_id)
+        if val is None:
+            return 0.0
+        return round(val, 2)
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _on_measure_finished(event):
+            if event.data.get("circuit_id") == self._circuit_id:
+                self.async_schedule_update_ha_state()
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished))
 
 class TrackedCoverageSensor(BasePCASensor):
     _attr_name = "Tracked Coverage"

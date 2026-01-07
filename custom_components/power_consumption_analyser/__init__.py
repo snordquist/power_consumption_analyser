@@ -26,7 +26,7 @@ CONF_UNTRACKED_NUMBER = "untracked_number"
 # Options key to persist dynamic energy meter mappings
 OPT_ENERGY_METERS_MAP = "energy_meters_map"  # entity_id -> circuit_id
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
 class Circuit:
     def __init__(self, id: str, phase: str, breaker: str, rating: str, description: str, energy_meters: Optional[List[str]] = None):
@@ -54,6 +54,13 @@ class PCAData:
         self.label_meters: Set[str] = set()
         self.energy_label_id: Optional[str] = None
         self.devices_with_label: Set[str] = set()
+        # Measurement workflow state
+        self.measure_samples: Dict[str, List[float]] = {}
+        self.measure_baseline: Dict[str, float] = {}
+        self.measure_listeners: Dict[str, Optional[callable]] = {}
+        self.measure_timers: Dict[str, Optional[callable]] = {}
+        self.measure_results: Dict[str, float] = {}
+        self.measure_duration_s: int = 30
 
     def is_safe(self, cid: str) -> bool:
         return cid in self.safe_circuits
