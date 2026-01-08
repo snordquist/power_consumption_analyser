@@ -113,6 +113,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.effect_strategy = entry.options.get(OPT_EFFECT_STRATEGY, data.effect_strategy)
     except Exception:
         pass
+    # Load min effect threshold
+    try:
+        from .const import OPT_MIN_EFFECT_W
+        mv = entry.options.get(OPT_MIN_EFFECT_W)
+        if mv is not None:
+            data.min_effect_w = int(mv)
+    except Exception:
+        pass
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     # Listen for measure_finished to drive workflow steps
@@ -656,6 +664,12 @@ def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
     try:
         hx = int(entry.options.get("history_size", data.measure_history_max))
         data.measure_history_max = max(1, min(500, hx))
+    except Exception:
+        pass
+    try:
+        from .const import OPT_MIN_EFFECT_W
+        mv = entry.options.get(OPT_MIN_EFFECT_W, data.min_effect_w)
+        data.min_effect_w = max(0, min(200, int(mv)))
     except Exception:
         pass
 

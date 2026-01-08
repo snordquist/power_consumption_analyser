@@ -26,6 +26,18 @@ class CircuitEffectSensor(BasePCASensor):
 
     @property
     def extra_state_attributes(self) -> dict:
+        attrs = {}
+        if self._circuit_id in self.data.measure_results:
+            valid = getattr(self.data, "measure_valid", {}).get(self._circuit_id)
+            reason = getattr(self.data, "measure_reason", {}).get(self._circuit_id)
+            if valid is not None:
+                attrs["valid"] = valid
+            if reason:
+                attrs["reason"] = reason
+            clamped = getattr(self.data, "measure_clamped", {}).get(self._circuit_id)
+            if clamped is not None:
+                attrs["clamped"] = clamped
+
         hist = self.data.measure_history.get(self._circuit_id, [])
         effects = [h.get("effect", 0.0) for h in hist]
         count = len(effects)
@@ -47,4 +59,3 @@ class CircuitEffectSensor(BasePCASensor):
             if event.data.get("circuit_id") == self._circuit_id:
                 self.async_schedule_update_ha_state()
         self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}.measure_finished", _on_measure_finished))
-

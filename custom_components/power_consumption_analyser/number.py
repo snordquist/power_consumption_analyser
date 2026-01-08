@@ -1,7 +1,7 @@
 from __future__ import annotations
 from homeassistant.core import HomeAssistant
 from homeassistant.components.number import NumberEntity
-from .const import DOMAIN, OPT_MEASURE_DURATION_S
+from .const import DOMAIN, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W
 from .model import PCAData
 
 NAME = "Measure Duration"
@@ -43,8 +43,37 @@ class MeasureDurationNumber(NumberEntity):
             self.hass.config_entries.async_update_entry(entry, options=opts)
         self.async_write_ha_state()
 
+class MinEffectThresholdNumber(NumberEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Min Effect Threshold"
+    _attr_native_unit_of_measurement = "W"
+    _attr_icon = "mdi:filter-variant"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 200
+    _attr_native_step = 1
+
+    def __init__(self, data: PCAData):
+        self._data = data
+        self._attr_unique_id = f"{DOMAIN}_min_effect_w"
+
+    @property
+    def native_value(self) -> float:
+        return float(getattr(self._data, "min_effect_w", 0) or 0)
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_val = int(value)
+        new_val = max(0, min(200, new_val))
+        self._data.min_effect_w = new_val
+        # Persist to options
+        entry = getattr(self.hass.data.get(DOMAIN), "config_entry", None)
+        if entry:
+            opts = dict(entry.options)
+            opts[OPT_MIN_EFFECT_W] = new_val
+            self.hass.config_entries.async_update_entry(entry, options=opts)
+        self.async_write_ha_state()
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
     # Stash entry to allow persisting options from entity
     setattr(hass.data[DOMAIN], "config_entry", entry)
-    async_add_entities([MeasureDurationNumber(data)], True)
+    async_add_entities([MeasureDurationNumber(data), MinEffectThresholdNumber(data)], True)

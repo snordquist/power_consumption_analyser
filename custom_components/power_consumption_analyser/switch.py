@@ -131,7 +131,14 @@ class CircuitMeasureSwitch(SwitchEntity):
         strat = STRATEGIES.get(self.data.effect_strategy, STRATEGIES["average"])
         res = strat.compute(on_win, off_win)
         effect = float(res.get("effect", 0.0))
+        # Clamp tiny effects
+        thr = float(getattr(self.data, "min_effect_w", 0) or 0)
+        clamped = False
+        if abs(effect) < thr:
+            effect = 0.0
+            clamped = True
         self.data.measure_results[self._circuit_id] = effect
+        self.data.measure_clamped[self._circuit_id] = clamped
         # Record history
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -141,6 +148,7 @@ class CircuitMeasureSwitch(SwitchEntity):
             "samples": len(samples),
             "duration_s": self.data.measure_duration_s,
             "strategy": getattr(strat, "key", "average"),
+            "clamped": clamped,
         }
         hist = self.data.measure_history.setdefault(self._circuit_id, [])
         hist.append(entry)
