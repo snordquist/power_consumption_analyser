@@ -37,7 +37,7 @@ class PCAData:
         self.measure_listeners: Dict[str, Optional[callable]] = {}
         self.measure_timers: Dict[str, Optional[callable]] = {}
         self.measure_results: Dict[str, float] = {}
-        self.measure_duration_s: int = 30
+        self.measure_duration_s: int = 60
         self.measuring_circuit: Optional[str] = None
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}

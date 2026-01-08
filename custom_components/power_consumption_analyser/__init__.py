@@ -17,7 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.components import persistent_notification
 
 from .const import DOMAIN, CONF_UNTERVERTEILUNG_PATH, CONF_SAFE_CIRCUITS, CONF_BASELINE_SENSORS, CONF_UNTRACKED_NUMBER, OPT_ENERGY_METERS_MAP, PLATFORMS
-from .const import OPT_DEFAULT_NOTIFY_SERVICE
+from .const import OPT_DEFAULT_NOTIFY_SERVICE, OPT_MEASURE_DURATION_S
 from .model import PCAData, Circuit
 from .services.helpers import state_float as _state_float, calc_tracked_power as _calc_tracked_power
 from .services.workflow import workflow_start_current_step as _workflow_start_current_step, workflow_advance as _workflow_advance, workflow_finish as _workflow_finish, notify as _notify, simple_notify as _simple_notify
@@ -643,7 +643,7 @@ def _init_label_tracking(hass: HomeAssistant, data: PCAData) -> None:
 @callback
 def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
     try:
-        md = int(entry.options.get("measure_duration_s", data.measure_duration_s))
+        md = int(entry.options.get(OPT_MEASURE_DURATION_S, data.measure_duration_s))
         data.measure_duration_s = max(5, min(3600, md))
     except Exception:
         pass

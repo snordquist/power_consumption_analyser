@@ -10,5 +10,6 @@ CONF_UNTRACKED_NUMBER = "untracked_number"
 # Options key to persist dynamic energy meter mappings
 OPT_ENERGY_METERS_MAP = "energy_meters_map"  # entity_id -> circuit_id
 OPT_DEFAULT_NOTIFY_SERVICE = "default_notify_service"
+OPT_MEASURE_DURATION_S = "measure_duration_s"
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON, Platform.NUMBER]
