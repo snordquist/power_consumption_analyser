@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import List
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from .const import DOMAIN, OPT_EFFECT_STRATEGY
 from .model import PCAData
 
@@ -16,6 +16,7 @@ class EffectStrategySelect(SelectEntity):
     _attr_has_entity_name = False
     _attr_name = "Effect Strategy"
     _attr_icon = "mdi:calculator-variant"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, data: PCAData):
         self._data = data

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from homeassistant.core import HomeAssistant
 from homeassistant.components.number import NumberEntity
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from .const import DOMAIN, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W
 from .model import PCAData
 
@@ -18,14 +19,24 @@ class MeasureDurationNumber(NumberEntity):
     _attr_native_min_value = MIN_S
     _attr_native_max_value = MAX_S
     _attr_native_step = STEP
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, data: PCAData):
         self._data = data
         self._attr_unique_id = f"{DOMAIN}_measure_duration_s"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
 
     @property
     def native_value(self) -> float:
         return float(self._data.measure_duration_s)
+
+    @property
+    def suggested_object_id(self) -> str:
+        return "measure_duration"
 
     async def async_set_native_value(self, value: float) -> None:
         new_val = int(value)
@@ -51,14 +62,24 @@ class MinEffectThresholdNumber(NumberEntity):
     _attr_native_min_value = 0
     _attr_native_max_value = 200
     _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, data: PCAData):
         self._data = data
         self._attr_unique_id = f"{DOMAIN}_min_effect_w"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
 
     @property
     def native_value(self) -> float:
         return float(getattr(self._data, "min_effect_w", 0) or 0)
+
+    @property
+    def suggested_object_id(self) -> str:
+        return "min_effect_w"
 
     async def async_set_native_value(self, value: float) -> None:
         new_val = int(value)
