@@ -15,5 +15,7 @@ OPT_EFFECT_STRATEGY = "effect_strategy"
 OPT_MIN_EFFECT_W = "min_effect_w"
 OPT_MIN_SAMPLES = "min_samples"
 OPT_TRIM_FRACTION = "trim_fraction"
+OPT_PRE_WAIT_S = "pre_wait_s"
+OPT_DISCARD_FIRST_N = "discard_first_n"
 
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON, Platform.NUMBER, Platform.SELECT]

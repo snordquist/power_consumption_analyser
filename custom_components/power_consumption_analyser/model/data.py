@@ -45,6 +45,13 @@ class PCAData:
         self.min_effect_w: int = 20
         self.min_samples: int = 10
         self.trim_fraction: int = 20  # percent for Trimmed Mean (0-45)
+        # Stabilization controls
+        self.pre_wait_s: int = 3
+        self.discard_first_n: int = 2
+        # Runtime per-circuit counters
+        self._collect_started_at: Optional[object] = None
+        self._collect_deadline: Optional[object] = None
+        self._discarded_counts: Dict[str, int] = {}
         self.measuring_circuit: Optional[str] = None
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}

@@ -137,6 +137,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data.trim_fraction = max(0, min(45, int(tf)))
     except Exception:
         pass
+    # Load pre-wait and discard-first
+    try:
+        from .const import OPT_PRE_WAIT_S, OPT_DISCARD_FIRST_N
+        pw = entry.options.get(OPT_PRE_WAIT_S)
+        if pw is not None:
+            data.pre_wait_s = max(0, min(30, int(pw)))
+        dn = entry.options.get(OPT_DISCARD_FIRST_N)
+        if dn is not None:
+            data.discard_first_n = max(0, min(50, int(dn)))
+    except Exception:
+        pass
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     # Listen for measure_finished to drive workflow steps
@@ -698,6 +709,14 @@ def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
         from .const import OPT_TRIM_FRACTION
         tf = entry.options.get(OPT_TRIM_FRACTION, data.trim_fraction)
         data.trim_fraction = max(0, min(45, int(tf)))
+    except Exception:
+        pass
+    try:
+        from .const import OPT_PRE_WAIT_S, OPT_DISCARD_FIRST_N
+        pw = entry.options.get(OPT_PRE_WAIT_S, data.pre_wait_s)
+        dn = entry.options.get(OPT_DISCARD_FIRST_N, data.discard_first_n)
+        data.pre_wait_s = max(0, min(30, int(pw)))
+        data.discard_first_n = max(0, min(50, int(dn)))
     except Exception:
         pass
 

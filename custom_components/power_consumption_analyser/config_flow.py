@@ -4,7 +4,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 
 from . import DOMAIN, CONF_UNTERVERTEILUNG_PATH, CONF_SAFE_CIRCUITS, CONF_UNTRACKED_NUMBER, CONF_BASELINE_SENSORS
-from .const import OPT_EFFECT_STRATEGY, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W
+from .const import (
+    OPT_EFFECT_STRATEGY,
+    OPT_MEASURE_DURATION_S,
+    OPT_MIN_EFFECT_W,
+    OPT_PRE_WAIT_S,
+    OPT_DISCARD_FIRST_N,
+)
 
 HOME_CONS_KEY = "home_consumption"
 GRID_POWER_KEY = "grid_power"
@@ -60,6 +66,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             options[OPT_MEASURE_DURATION_S] = int(user_input.get(OPT_MEASURE_DURATION_S, 30))
             options["history_size"] = int(user_input.get("history_size", 50))
             options[OPT_MIN_EFFECT_W] = int(user_input.get(OPT_MIN_EFFECT_W, 20))
+            options[OPT_PRE_WAIT_S] = int(user_input.get(OPT_PRE_WAIT_S, 3))
+            options[OPT_DISCARD_FIRST_N] = int(user_input.get(OPT_DISCARD_FIRST_N, 2))
             strategy = user_input.get(OPT_EFFECT_STRATEGY, "average")
             if strategy not in _STRATEGY_KEYS:
                 strategy = "average"
@@ -70,11 +78,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         current_hx = self._entry.options.get("history_size", 50)
         current_me = self._entry.options.get(OPT_MIN_EFFECT_W, 20)
         current_strategy = self._entry.options.get(OPT_EFFECT_STRATEGY, "average")
+        current_pw = self._entry.options.get(OPT_PRE_WAIT_S, 3)
+        current_dn = self._entry.options.get(OPT_DISCARD_FIRST_N, 2)
         schema = vol.Schema({
             vol.Optional(OPT_MEASURE_DURATION_S, default=current): int,
             vol.Optional("history_size", default=current_hx): int,
             vol.Optional(OPT_MIN_EFFECT_W, default=current_me): int,
             vol.Optional(OPT_EFFECT_STRATEGY, default=current_strategy): vol.In(_STRATEGY_KEYS),
+            vol.Optional(OPT_PRE_WAIT_S, default=current_pw): int,
+            vol.Optional(OPT_DISCARD_FIRST_N, default=current_dn): int,
         })
         return self.async_show_form(step_id="user", data_schema=schema)
 

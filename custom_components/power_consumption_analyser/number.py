@@ -3,7 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.number import NumberEntity
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from .const import DOMAIN, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W, OPT_MIN_SAMPLES
-from .const import OPT_TRIM_FRACTION
+from .const import OPT_TRIM_FRACTION, OPT_PRE_WAIT_S, OPT_DISCARD_FIRST_N
 from .model import PCAData
 
 NAME = "Measure Duration"
@@ -169,8 +169,83 @@ class TrimFractionNumber(NumberEntity):
             self.hass.config_entries.async_update_entry(entry, options=opts)
         self.async_write_ha_state()
 
+class PreWaitNumber(NumberEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Pre Wait"
+    _attr_icon = "mdi:timer-sand"
+    _attr_native_unit_of_measurement = "s"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 30
+    _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, data: PCAData):
+        self._data = data
+        self._attr_unique_id = f"{DOMAIN}_pre_wait_s"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
+
+    @property
+    def native_value(self) -> float:
+        return float(getattr(self._data, "pre_wait_s", 0))
+
+    @property
+    def suggested_object_id(self) -> str:
+        return "pre_wait_s"
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_val = int(value)
+        new_val = max(0, min(30, new_val))
+        self._data.pre_wait_s = new_val
+        entry = getattr(self.hass.data.get(DOMAIN), "config_entry", None)
+        if entry:
+            opts = dict(entry.options)
+            opts[OPT_PRE_WAIT_S] = new_val
+            self.hass.config_entries.async_update_entry(entry, options=opts)
+        self.async_write_ha_state()
+
+class DiscardFirstNumber(NumberEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Discard First Samples"
+    _attr_icon = "mdi:filter-remove-outline"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 50
+    _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, data: PCAData):
+        self._data = data
+        self._attr_unique_id = f"{DOMAIN}_discard_first_n"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
+
+    @property
+    def native_value(self) -> float:
+        return float(getattr(self._data, "discard_first_n", 0))
+
+    @property
+    def suggested_object_id(self) -> str:
+        return "discard_first_n"
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_val = int(value)
+        new_val = max(0, min(50, new_val))
+        self._data.discard_first_n = new_val
+        entry = getattr(self.hass.data.get(DOMAIN), "config_entry", None)
+        if entry:
+            opts = dict(entry.options)
+            opts[OPT_DISCARD_FIRST_N] = new_val
+            self.hass.config_entries.async_update_entry(entry, options=opts)
+        self.async_write_ha_state()
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
     # Stash entry to allow persisting options from entity
     setattr(hass.data[DOMAIN], "config_entry", entry)
-    async_add_entities([MeasureDurationNumber(data), MinEffectThresholdNumber(data), MinSamplesNumber(data), TrimFractionNumber(data)], True)
+    async_add_entities([MeasureDurationNumber(data), MinEffectThresholdNumber(data), MinSamplesNumber(data), TrimFractionNumber(data), PreWaitNumber(data), DiscardFirstNumber(data)], True)

@@ -102,11 +102,37 @@ class CircuitMeasureSwitch(SwitchEntity):
         if home:
             entities.add(home)
 
+        # Initialize pre-wait and discard counters
+        try:
+            from datetime import datetime, timezone, timedelta
+            self.data._collect_started_at = datetime.now(timezone.utc)
+            self.data._collect_deadline = self.data._collect_started_at + timedelta(seconds=max(0, int(getattr(self.data, "pre_wait_s", 0) or 0)))
+        except Exception:
+            self.data._collect_started_at = None
+            self.data._collect_deadline = None
+        self.data._discarded_counts[self._circuit_id] = 0
+
         @callback
         def _on_change(event):
             if not self._is_on:
                 return
+            # Enforce pre-wait
+            deadl = getattr(self.data, "_collect_deadline", None)
+            if deadl is not None:
+                try:
+                    from datetime import datetime, timezone
+                    if datetime.now(timezone.utc) < deadl:
+                        return
+                except Exception:
+                    pass
+            # Compute current untracked
             untracked = _current_untracked(hass, self.data)
+            # Discard first N samples
+            disc_n = int(getattr(self.data, "discard_first_n", 0) or 0)
+            cur_disc = int(self.data._discarded_counts.get(self._circuit_id, 0) or 0)
+            if cur_disc < disc_n:
+                self.data._discarded_counts[self._circuit_id] = cur_disc + 1
+                return
             self.data.measure_samples[self._circuit_id].append(untracked)
 
         if entities:
@@ -125,6 +151,11 @@ class CircuitMeasureSwitch(SwitchEntity):
         if self._unsub_state:
             self._unsub_state()
             self._unsub_state = None
+        # Clear runtime counters
+        self.data._collect_started_at = None
+        self.data._collect_deadline = None
+        if self._circuit_id in self.data._discarded_counts:
+            del self.data._discarded_counts[self._circuit_id]
 
         samples = self.data.measure_samples.get(self._circuit_id, [])
         baseline = self.data.measure_baseline.get(self._circuit_id, 0.0)
