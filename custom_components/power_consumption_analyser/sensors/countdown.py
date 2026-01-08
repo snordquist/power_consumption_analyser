@@ -20,6 +20,11 @@ class CountdownSensor(BasePCASensor):
         return f"{DOMAIN}_countdown"
 
     @property
+    def suggested_object_id(self) -> str:
+        # Ensure entity_id is sensor.power_consumption_analyser_countdown
+        return f"{DOMAIN}_countdown"
+
+    @property
     def native_value(self) -> Optional[int]:
         if not self.data.workflow_active:
             return None
@@ -28,6 +33,8 @@ class CountdownSensor(BasePCASensor):
         if not started or wait_s <= 0:
             return None
         now = datetime.now(timezone.utc)
+        if not isinstance(started, datetime):
+            return None
         elapsed = int((now - started).total_seconds())
         remaining = max(0, wait_s - elapsed)
         return remaining
@@ -37,7 +44,7 @@ class CountdownSensor(BasePCASensor):
         def _tick(now):
             # If inactive, stop ticking
             if not self.data.workflow_active:
-                if self._unsub:
+                if callable(self._unsub):
                     self._unsub()
                     self._unsub = None
                 return
