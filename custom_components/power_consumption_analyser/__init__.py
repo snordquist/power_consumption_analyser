@@ -121,6 +121,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data.min_effect_w = int(mv)
     except Exception:
         pass
+    # Load min samples
+    try:
+        from .const import OPT_MIN_SAMPLES
+        ms = entry.options.get(OPT_MIN_SAMPLES)
+        if ms is not None:
+            data.min_samples = max(0, min(600, int(ms)))
+    except Exception:
+        pass
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     # Listen for measure_finished to drive workflow steps
@@ -670,6 +678,12 @@ def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
         from .const import OPT_MIN_EFFECT_W
         mv = entry.options.get(OPT_MIN_EFFECT_W, data.min_effect_w)
         data.min_effect_w = max(0, min(200, int(mv)))
+    except Exception:
+        pass
+    try:
+        from .const import OPT_MIN_SAMPLES
+        ms = entry.options.get(OPT_MIN_SAMPLES, data.min_samples)
+        data.min_samples = max(0, min(600, int(ms)))
     except Exception:
         pass
 

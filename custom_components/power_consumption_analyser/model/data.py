@@ -38,8 +38,12 @@ class PCAData:
         self.measure_timers: Dict[str, Optional[callable]] = {}
         self.measure_results: Dict[str, float] = {}
         self.measure_clamped: Dict[str, bool] = {}
+        self.measure_valid: Dict[str, bool] = {}
+        self.measure_reason: Dict[str, str] = {}
+        self.measure_stats: Dict[str, dict] = {}
         self.measure_duration_s: int = 60
         self.min_effect_w: int = 20
+        self.min_samples: int = 10
         self.measuring_circuit: Optional[str] = None
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}

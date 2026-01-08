@@ -44,6 +44,7 @@ class CircuitEffectSensor(BasePCASensor):
         avg = round(sum(effects) / count, 2) if count else 0.0
         mn = round(min(effects), 2) if effects else 0.0
         mx = round(max(effects), 2) if effects else 0.0
+        stats = getattr(self.data, "measure_stats", {}).get(self._circuit_id, {})
         return {
             "history_size": len(hist),
             "history_max": self.data.measure_history_max,
@@ -51,6 +52,10 @@ class CircuitEffectSensor(BasePCASensor):
             "min_effect": mn,
             "max_effect": mx,
             "last": hist[-1] if hist else None,
+            "samples": stats.get("samples"),
+            "median_off": stats.get("median_off"),
+            "mad": stats.get("mad"),
+            "sigma": stats.get("sigma"),
         }
 
     async def async_added_to_hass(self) -> None:

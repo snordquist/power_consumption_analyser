@@ -137,8 +137,40 @@ class CircuitMeasureSwitch(SwitchEntity):
         if abs(effect) < thr:
             effect = 0.0
             clamped = True
+        # Compute stats on OFF samples
+        n = len(samples)
+        med = 0.0
+        mad = 0.0
+        sigma = 0.0
+        if n:
+            try:
+                from statistics import median
+                med = median(samples)
+                mad = median([abs(x - med) for x in samples])
+                sigma = 1.4826 * mad
+            except Exception:
+                med = mean(samples)
+                mad = 0.0
+                sigma = 0.0
+        # Validity based on min samples
+        min_samples = int(getattr(self.data, "min_samples", 0) or 0)
+        valid = True
+        reason = ""
+        if n < min_samples:
+            valid = False
+            reason = f"too_few_samples:{n}<{min_samples}"
+
         self.data.measure_results[self._circuit_id] = effect
         self.data.measure_clamped[self._circuit_id] = clamped
+        self.data.measure_valid[self._circuit_id] = valid
+        if reason:
+            self.data.measure_reason[self._circuit_id] = reason
+        self.data.measure_stats[self._circuit_id] = {
+            "samples": n,
+            "median_off": round(med, 2),
+            "mad": round(mad, 2),
+            "sigma": round(sigma, 2),
+        }
         # Record history
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -149,6 +181,10 @@ class CircuitMeasureSwitch(SwitchEntity):
             "duration_s": self.data.measure_duration_s,
             "strategy": getattr(strat, "key", "average"),
             "clamped": clamped,
+            "valid": valid,
+            "reason": reason,
+            "mad": round(mad, 2),
+            "sigma": round(sigma, 2),
         }
         hist = self.data.measure_history.setdefault(self._circuit_id, [])
         hist.append(entry)
