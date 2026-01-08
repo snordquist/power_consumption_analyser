@@ -15,10 +15,12 @@ from .model import PCAData
 from .strategies.base import MeasurementWindow
 from .strategies.average import AverageStrategy
 from .strategies.median import MedianStrategy
+from .strategies.trimmed_mean import TrimmedMeanStrategy
 
 STRATEGIES = {
     "average": AverageStrategy(),
     "median": MedianStrategy(),
+    "trimmed_mean": TrimmedMeanStrategy(),
 }
 
 

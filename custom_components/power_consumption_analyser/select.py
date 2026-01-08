@@ -8,6 +8,7 @@ from .model import PCAData
 OPTIONS = [
     ("average", "Average"),
     ("median", "Median"),
+    ("trimmed_mean", "Trimmed Mean"),
 ]
 
 class EffectStrategySelect(SelectEntity):
@@ -53,4 +54,3 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
     setattr(hass.data[DOMAIN], "config_entry", entry)
     async_add_entities([EffectStrategySelect(data)], True)
-

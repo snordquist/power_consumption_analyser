@@ -6,6 +6,7 @@ from ..const import DOMAIN
 STRAT_NAMES = {
     "average": "Average",
     "median": "Median",
+    "trimmed_mean": "Trimmed Mean",
 }
 
 class SelectedStrategySensor(BasePCASensor):
@@ -25,4 +26,3 @@ class SelectedStrategySensor(BasePCASensor):
     def extra_state_attributes(self) -> dict:
         key = getattr(self.data, "effect_strategy", "average")
         return {"key": key}
-
