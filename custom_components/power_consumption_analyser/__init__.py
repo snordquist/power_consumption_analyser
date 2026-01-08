@@ -129,6 +129,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data.min_samples = max(0, min(600, int(ms)))
     except Exception:
         pass
+    # Load trim fraction
+    try:
+        from .const import OPT_TRIM_FRACTION
+        tf = entry.options.get(OPT_TRIM_FRACTION)
+        if tf is not None:
+            data.trim_fraction = max(0, min(45, int(tf)))
+    except Exception:
+        pass
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     # Listen for measure_finished to drive workflow steps
@@ -684,6 +692,12 @@ def _apply_options_to_data(data: PCAData, entry: ConfigEntry) -> None:
         from .const import OPT_MIN_SAMPLES
         ms = entry.options.get(OPT_MIN_SAMPLES, data.min_samples)
         data.min_samples = max(0, min(600, int(ms)))
+    except Exception:
+        pass
+    try:
+        from .const import OPT_TRIM_FRACTION
+        tf = entry.options.get(OPT_TRIM_FRACTION, data.trim_fraction)
+        data.trim_fraction = max(0, min(45, int(tf)))
     except Exception:
         pass
 

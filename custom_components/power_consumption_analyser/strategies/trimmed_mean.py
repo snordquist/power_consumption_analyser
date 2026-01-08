@@ -26,4 +26,3 @@ class TrimmedMeanStrategy(EffectStrategy):
             avg = mean(center) if center else mean(vals)
         effect = on.baseline - avg
         return {"effect": effect, "trim": self.trim, "n": n}
-

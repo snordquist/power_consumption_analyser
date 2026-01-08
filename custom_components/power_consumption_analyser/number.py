@@ -3,6 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.number import NumberEntity
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from .const import DOMAIN, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W, OPT_MIN_SAMPLES
+from .const import OPT_TRIM_FRACTION
 from .model import PCAData
 
 NAME = "Measure Duration"
@@ -130,8 +131,46 @@ class MinSamplesNumber(NumberEntity):
             self.hass.config_entries.async_update_entry(entry, options=opts)
         self.async_write_ha_state()
 
+class TrimFractionNumber(NumberEntity):
+    _attr_has_entity_name = True
+    _attr_name = "Trim Fraction"
+    _attr_icon = "mdi:ray-start-end"
+    _attr_native_unit_of_measurement = "%"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 45
+    _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, data: PCAData):
+        self._data = data
+        self._attr_unique_id = f"{DOMAIN}_trim_fraction"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
+
+    @property
+    def native_value(self) -> float:
+        return float(getattr(self._data, "trim_fraction", 20))
+
+    @property
+    def suggested_object_id(self) -> str:
+        return "trim_fraction"
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_val = int(value)
+        new_val = max(0, min(45, new_val))
+        self._data.trim_fraction = new_val
+        entry = getattr(self.hass.data.get(DOMAIN), "config_entry", None)
+        if entry:
+            opts = dict(entry.options)
+            opts[OPT_TRIM_FRACTION] = new_val
+            self.hass.config_entries.async_update_entry(entry, options=opts)
+        self.async_write_ha_state()
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     data: PCAData = hass.data[DOMAIN]
     # Stash entry to allow persisting options from entity
     setattr(hass.data[DOMAIN], "config_entry", entry)
-    async_add_entities([MeasureDurationNumber(data), MinEffectThresholdNumber(data), MinSamplesNumber(data)], True)
+    async_add_entities([MeasureDurationNumber(data), MinEffectThresholdNumber(data), MinSamplesNumber(data), TrimFractionNumber(data)], True)

@@ -14,5 +14,6 @@ OPT_MEASURE_DURATION_S = "measure_duration_s"
 OPT_EFFECT_STRATEGY = "effect_strategy"
 OPT_MIN_EFFECT_W = "min_effect_w"
 OPT_MIN_SAMPLES = "min_samples"
+OPT_TRIM_FRACTION = "trim_fraction"
 
 PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BUTTON, Platform.NUMBER, Platform.SELECT]

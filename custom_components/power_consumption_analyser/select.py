@@ -10,6 +10,7 @@ OPTIONS = [
     ("average", "Average"),
     ("median", "Median"),
     ("trimmed_mean", "Trimmed Mean"),
+    ("median_of_means", "Median of Means"),
 ]
 
 class EffectStrategySelect(SelectEntity):

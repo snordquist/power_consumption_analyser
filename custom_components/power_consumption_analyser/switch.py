@@ -16,11 +16,13 @@ from .strategies.base import MeasurementWindow
 from .strategies.average import AverageStrategy
 from .strategies.median import MedianStrategy
 from .strategies.trimmed_mean import TrimmedMeanStrategy
+from .strategies.median_of_means import MedianOfMeansStrategy
 
 STRATEGIES = {
     "average": AverageStrategy(),
     "median": MedianStrategy(),
     "trimmed_mean": TrimmedMeanStrategy(),
+    "median_of_means": MedianOfMeansStrategy(),
 }
 
 
@@ -128,7 +130,18 @@ class CircuitMeasureSwitch(SwitchEntity):
         baseline = self.data.measure_baseline.get(self._circuit_id, 0.0)
         on_win = MeasurementWindow(baseline=baseline, samples=[baseline])
         off_win = MeasurementWindow(baseline=baseline, samples=samples or [ _current_untracked(self.hass, self.data) ])
-        strat = STRATEGIES.get(self.data.effect_strategy, STRATEGIES["average"])
+        key = self.data.effect_strategy
+        strat = STRATEGIES.get(key)
+        if key == "trimmed_mean":
+            # Use configured trim fraction (percent)
+            try:
+                from .strategies.trimmed_mean import TrimmedMeanStrategy as _TMS
+                trim = float(getattr(self.data, "trim_fraction", 20) or 20) / 100.0
+                strat = _TMS(trim=trim)
+            except Exception:
+                pass
+        if strat is None:
+            strat = STRATEGIES["average"]
         res = strat.compute(on_win, off_win)
         effect = float(res.get("effect", 0.0))
         # Clamp tiny effects

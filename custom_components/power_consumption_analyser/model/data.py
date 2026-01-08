@@ -44,6 +44,7 @@ class PCAData:
         self.measure_duration_s: int = 60
         self.min_effect_w: int = 20
         self.min_samples: int = 10
+        self.trim_fraction: int = 20  # percent for Trimmed Mean (0-45)
         self.measuring_circuit: Optional[str] = None
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}
