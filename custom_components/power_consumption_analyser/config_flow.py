@@ -4,10 +4,14 @@ import voluptuous as vol
 from homeassistant import config_entries
 
 from . import DOMAIN, CONF_UNTERVERTEILUNG_PATH, CONF_SAFE_CIRCUITS, CONF_UNTRACKED_NUMBER, CONF_BASELINE_SENSORS
+from .const import OPT_EFFECT_STRATEGY, OPT_MEASURE_DURATION_S, OPT_MIN_EFFECT_W
 
 HOME_CONS_KEY = "home_consumption"
 GRID_POWER_KEY = "grid_power"
 TRACKED_SUM_KEY = "tracked_power_sum"
+
+# Available strategies
+_STRATEGY_KEYS = ["average", "median", "trimmed_mean", "median_of_means"]
 
 class PCAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -53,15 +57,24 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             # Persist options
             options = dict(self._entry.options)
-            options["measure_duration_s"] = int(user_input.get("measure_duration_s", 30))
+            options[OPT_MEASURE_DURATION_S] = int(user_input.get(OPT_MEASURE_DURATION_S, 30))
             options["history_size"] = int(user_input.get("history_size", 50))
+            options[OPT_MIN_EFFECT_W] = int(user_input.get(OPT_MIN_EFFECT_W, 20))
+            strategy = user_input.get(OPT_EFFECT_STRATEGY, "average")
+            if strategy not in _STRATEGY_KEYS:
+                strategy = "average"
+            options[OPT_EFFECT_STRATEGY] = strategy
             return self.async_create_entry(title="Options", data=options)
 
-        current = self._entry.options.get("measure_duration_s", 30)
+        current = self._entry.options.get(OPT_MEASURE_DURATION_S, 30)
         current_hx = self._entry.options.get("history_size", 50)
+        current_me = self._entry.options.get(OPT_MIN_EFFECT_W, 20)
+        current_strategy = self._entry.options.get(OPT_EFFECT_STRATEGY, "average")
         schema = vol.Schema({
-            vol.Optional("measure_duration_s", default=current): int,
+            vol.Optional(OPT_MEASURE_DURATION_S, default=current): int,
             vol.Optional("history_size", default=current_hx): int,
+            vol.Optional(OPT_MIN_EFFECT_W, default=current_me): int,
+            vol.Optional(OPT_EFFECT_STRATEGY, default=current_strategy): vol.In(_STRATEGY_KEYS),
         })
         return self.async_show_form(step_id="user", data_schema=schema)
 
