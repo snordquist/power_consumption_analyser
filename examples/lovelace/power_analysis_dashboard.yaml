@@ -11,65 +11,95 @@ views:
     icon: mdi:flash
     badges: []
     cards:
-      # Status section
-      - type: entities
-        title: Status
-        show_header_toggle: false
-        entities:
-          - entity: sensor.power_consumption_analyser_measurement_status
-            name: Measurement Status
-          - entity: sensor.power_consumption_analyser_analysis_status
-            name: Analysis Status
-          - entity: sensor.power_consumption_analyser_untracked_power
-            name: Untracked Power
-          - entity: sensor.power_consumption_analyser_tracked_power_sum
-            name: Tracked Power Sum
-          - entity: sensor.power_consumption_analyser_tracked_coverage
-            name: Tracked Coverage
-          - entity: sensor.power_consumption_analyser_tracked_untracked_ratio
-            name: Tracked/Untracked Ratio
-          - entity: sensor.power_consumption_analyser_measurement_summary
-            name: Measurement Summary
+      # Kopfbereich: Untracked Gauge + Kennzahlen
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: gauge
+            name: Nicht erfasste Leistung
+            entity: sensor.power_consumption_analyser_untracked_power
+            min: 0
+            max: 1000
+            needle: true
+            severity:
+              green: 0
+              yellow: 150
+              red: 400
+          - type: entities
+            title: Kennzahlen
+            show_header_toggle: false
+            entities:
+              - entity: sensor.power_consumption_analyser_tracked_power_sum
+                name: Erfasste Leistung
+              - entity: sensor.power_consumption_analyser_tracked_coverage
+                name: Abdeckung
+              - entity: sensor.power_consumption_analyser_tracked_untracked_ratio
+                name: Verhältnis Erfasst/Nichterfasst
 
-      # Instruction (only while measuring)
+      # Aktueller Schritt – nur sichtbar, wenn Workflow aktiv ist
       - type: conditional
         conditions:
-          - entity: sensor.power_consumption_analyser_measurement_status
-            state_not: idle
-        card:
-          type: markdown
-          title: Anleitung
-          content: |
-           {% set st = states('sensor.power_consumption_analyser_measurement_status') %}
-           {% set parts = st.split(':') %}
-           {% if parts|length >= 2 %}
-           Schalte jetzt Stromkreis **{{ parts[1] }}** AUS.
-           {% if parts|length >= 3 %} Warte **{{ parts[2] }}**.{% endif %}
-           {% else %}
-           Messung läuft…
-           {% endif %}
-
-      # Countdown
-      - type: conditional
-        conditions:
-          - entity: sensor.power_consumption_analyser_measurement_status
-            state_not: idle
+          - entity: sensor.power_consumption_analyser_workflow_progress
+            state: active
         card:
           type: vertical-stack
           cards:
+            - type: markdown
+              title: Aktueller Schritt
+              content: |
+                {% set wp = state_attr('sensor.power_consumption_analyser_workflow_progress', 'current') %}
+                {% set rem = states('sensor.power_consumption_analyser_countdown') %}
+                {% if wp %}
+                Schalte jetzt Stromkreis **{{ wp }}** AUS.  
+                Restzeit: **{{ rem if rem not in ['unknown','unavailable'] else '—' }} s**
+                {% else %}
+                Kein aktiver Schritt.
+                {% endif %}
             - type: entities
-              title: Countdown
               entities:
                 - entity: sensor.power_consumption_analyser_countdown
                   name: Restzeit (Sekunden)
-            - type: button
-              name: Weiter
-              icon: mdi:arrow-right
-              tap_action:
-                action: call-service
-                service: power_consumption_analyser.workflow_finish_current
+            - type: horizontal-stack
+              cards:
+                - type: button
+                  name: Weiter
+                  icon: mdi:arrow-right
+                  tap_action:
+                    action: call-service
+                    service: power_consumption_analyser.workflow_finish_current
+                - type: button
+                  name: Überspringen
+                  icon: mdi:skip-next
+                  tap_action:
+                    action: call-service
+                    service: power_consumption_analyser.workflow_skip_current
+                - type: button
+                  name: Stopp
+                  icon: mdi:stop
+                  tap_action:
+                    action: call-service
+                    service: power_consumption_analyser.workflow_stop
+            - type: markdown
+              title: Letztes Ergebnis
+              content: |
+                {% set done = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') or [] %}
+                {% if done %}
+                {% set last = done|last %}
+                {% set eid = 'sensor.power_consumption_analyser_circuit_' ~ last|lower ~ '_effect' %}
+                {% set eff = states(eid) %}
+                {% set valid = state_attr(eid, 'valid') %}
+                {% set clamped = state_attr(eid, 'clamped') %}
+                {% set samples = state_attr(eid, 'samples') %}
+                {% set mad = state_attr(eid, 'mad') %}
+                {% set sigma = state_attr(eid, 'sigma') %}
+                Letzter Schritt: **{{ last }}** — Effekt: **{{ eff if eff not in ['unknown','unavailable', None] else '—' }} W**  
+                Qualität: {% if valid %}✅ gültig{% else %}⚠️ ungültig{% endif %}{% if clamped %} • geklemmt{% endif %} • n={{ samples or '–' }} • MAD={{ mad or '–' }} • σ={{ sigma or '–' }}
+                {% else %}
+                Noch keine Ergebnisse.
+                {% endif %}
 
-      # Controls: global device buttons
+      # Globale Steuerung (kompakt)
       - type: horizontal-stack
         cards:
           - type: button
@@ -100,71 +130,43 @@ views:
               service_data:
                 entity_id: button.reset_values
 
-      # Controls: service buttons (Skip / Restart)
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Überspringen
-            icon: mdi:skip-next
-            tap_action:
-              action: call-service
-              service: power_consumption_analyser.workflow_skip_current
-          - type: button
-            name: Neu starten
-            icon: mdi:restart
-            tap_action:
-              action: call-service
-              service: power_consumption_analyser.workflow_restart
-
-      # Effects per circuit (add/remove your circuit sensors)
-      - type: entities
-        title: Effekte je Stromkreis (Beispiele – bitte anpassen)
-        show_header_toggle: false
-        entities:
-          - sensor.power_consumption_analyser_circuit_1f1_effect
-          - sensor.power_consumption_analyser_circuit_1f2_effect
-          - sensor.power_consumption_analyser_circuit_2f7_effect
-          - sensor.power_consumption_analyser_circuit_3f11_effect
-
-      # History / graphs
-      - type: history-graph
-        title: Lastverlauf (6h)
-        hours_to_show: 6
-        entities:
-          - sensor.power_consumption_analyser_untracked_power
-          - sensor.power_consumption_analyser_tracked_power_sum
-      - type: statistics-graph
-        title: Abdeckung (24h)
-        period: hour
-        days_to_show: 1
-        stat_types:
-          - mean
-        entities:
-          - sensor.power_consumption_analyser_tracked_coverage
-
-      # Workflow progress visualization
+      # Fortschritt (kompakt)
       - type: markdown
         title: Fortschritt
         content: |
-           {% set attrs = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') %}
+           {% set done = state_attr('sensor.power_consumption_analyser_workflow_progress', 'done') %}
            {% set rem = state_attr('sensor.power_consumption_analyser_workflow_progress', 'remaining') %}
-           {% if attrs %}
-           Abgeschlossen:
-           {% for c in attrs %}
-           - ✅ {{ c }}
-           {% endfor %}
+           {% if done and done|length %}
+           Abgeschlossen: {{ done|join(', ') }}
            {% else %}
            Noch nichts abgeschlossen.
            {% endif %}
 
-           {% if rem %}
-           Offen:
-           {% for c in rem %}
-           - ⏳ {{ c }}
-           {% endfor %}
+           {% if rem and rem|length %}
+           Offen: {{ rem|join(', ') }}
            {% else %}
            Keine offenen Schritte.
            {% endif %}
+
+      # Verlauf & Abdeckung
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: history-graph
+            title: Lastverlauf (6h)
+            hours_to_show: 6
+            entities:
+              - sensor.power_consumption_analyser_untracked_power
+              - sensor.power_consumption_analyser_tracked_power_sum
+          - type: statistics-graph
+            title: Abdeckung (24h)
+            period: hour
+            days_to_show: 1
+            stat_types:
+              - mean
+            entities:
+              - sensor.power_consumption_analyser_tracked_coverage
 
       # Unterverteilung: RCDs und Sicherungen
       - type: markdown
@@ -195,5 +197,3 @@ views:
            {% else %}
            (keine RCD-Gruppen gefunden)
            {% endif %}
-
-      # (Optional tiles view removed to ensure YAML parses; use static glance cards if needed.)
