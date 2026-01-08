@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import List
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from .const import DOMAIN, OPT_EFFECT_STRATEGY
 from .model import PCAData
 
@@ -12,7 +13,7 @@ OPTIONS = [
 ]
 
 class EffectStrategySelect(SelectEntity):
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     _attr_name = "Effect Strategy"
     _attr_icon = "mdi:calculator-variant"
 
@@ -23,6 +24,17 @@ class EffectStrategySelect(SelectEntity):
         self._keys = [key for key, _ in OPTIONS]
         # default to average
         self._current_key = getattr(data, "effect_strategy", self._keys[0])
+        # Attach to the same device as other PCA entities
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DOMAIN)},
+            name="Power Consumption Analyser",
+            manufacturer="Custom",
+        )
+
+    @property
+    def suggested_object_id(self) -> str:
+        # Ensure entity_id is select.power_consumption_analyser_effect_strategy
+        return f"{DOMAIN}_effect_strategy"
 
     @property
     def options(self) -> List[str]:

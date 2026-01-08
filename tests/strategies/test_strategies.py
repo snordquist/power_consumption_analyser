@@ -10,7 +10,7 @@ from custom_components.power_consumption_analyser.strategies.median import Media
         (150.0, [], 0.0),  # falls back to baseline-average; effect becomes 0
     ],
 )
-def computes_effect_with_average(baseline, off, expected):
+def test_computes_effect_with_average(baseline, off, expected):
     strat = AverageStrategy()
     on = MeasurementWindow(baseline=baseline, samples=[baseline])
     offw = MeasurementWindow(baseline=baseline, samples=off or [baseline])
@@ -25,7 +25,7 @@ def computes_effect_with_average(baseline, off, expected):
         (180.0, [180.0], 0.0),
     ],
 )
-def computes_effect_with_median(baseline, off, expected):
+def test_computes_effect_with_median(baseline, off, expected):
     strat = MedianStrategy()
     on = MeasurementWindow(baseline=baseline, samples=[baseline])
     offw = MeasurementWindow(baseline=baseline, samples=off or [baseline])

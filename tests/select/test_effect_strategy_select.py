@@ -5,7 +5,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.power_consumption_analyser import DOMAIN
 
 @pytest.mark.asyncio
-async def select_entity_changes_strategy_and_persists(hass: HomeAssistant, sample_yaml, enable_custom_integrations):
+async def test_select_entity_changes_strategy_and_persists(hass: HomeAssistant, sample_yaml, enable_custom_integrations):
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="PCA",
@@ -23,7 +23,7 @@ async def select_entity_changes_strategy_and_persists(hass: HomeAssistant, sampl
 
     sel = hass.states.get("select.power_consumption_analyser_effect_strategy")
     assert sel is not None
-    assert sel.state in ("Average", "Median")
+    assert sel.state in ("Average", "Median", "Trimmed Mean")
 
     # Switch to Median
     await hass.services.async_call(
@@ -39,4 +39,3 @@ async def select_entity_changes_strategy_and_persists(hass: HomeAssistant, sampl
     # Options should now contain effect_strategy
     saved = hass.config_entries.async_entries(DOMAIN)[0].options.get("effect_strategy")
     assert saved == "median"
-

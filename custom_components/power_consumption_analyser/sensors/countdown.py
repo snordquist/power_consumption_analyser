@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_time_interval
 from .base import BasePCASensor
@@ -44,4 +44,4 @@ class CountdownSensor(BasePCASensor):
             self.async_schedule_update_ha_state()
         # Start ticking every second
         if self._unsub is None:
-            self._unsub = async_track_time_interval(self.hass, _tick, interval=1.0)
+            self._unsub = async_track_time_interval(self.hass, _tick, interval=timedelta(seconds=1))

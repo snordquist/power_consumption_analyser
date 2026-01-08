@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.power_consumption_analyser.model.data import PCAData, Circuit
 
 @pytest.mark.asyncio
-async def initializes_with_empty_collections(hass: HomeAssistant):
+async def test_initializes_with_empty_collections(hass: HomeAssistant):
     data = PCAData(hass)
     assert data.circuits == {}
     assert data.safe_circuits == []
@@ -26,21 +26,21 @@ async def initializes_with_empty_collections(hass: HomeAssistant):
     assert data.rcd_to_circuits == {}
 
 @pytest.mark.asyncio
-async def is_safe_returns_true_for_configured_safe_circuit(hass: HomeAssistant):
+async def test_is_safe_returns_true_for_configured_safe_circuit(hass: HomeAssistant):
     data = PCAData(hass)
     data.safe_circuits = ["1F1", "2F7"]
     assert data.is_safe("1F1") is True
     assert data.is_safe("2F7") is True
 
 @pytest.mark.asyncio
-async def is_safe_returns_false_for_other_circuit(hass: HomeAssistant):
+async def test_is_safe_returns_false_for_other_circuit(hass: HomeAssistant):
     data = PCAData(hass)
     data.safe_circuits = ["1F1"]
     assert data.is_safe("1F2") is False
     assert data.is_safe("") is False
 
 @pytest.mark.asyncio
-async def can_register_circuits_and_meters(hass: HomeAssistant):
+async def test_can_register_circuits_and_meters(hass: HomeAssistant):
     data = PCAData(hass)
     # Add circuits
     data.circuits["1F1"] = Circuit(id="1F1", energy_meters=["sensor.m1"])
@@ -58,7 +58,7 @@ async def can_register_circuits_and_meters(hass: HomeAssistant):
     assert data.meter_to_circuit["sensor.m3"] == "1F2"
 
 @pytest.mark.asyncio
-async def rcd_grouping_containers_are_mutable_and_preserve_order(hass: HomeAssistant):
+async def test_rcd_grouping_containers_are_mutable_and_preserve_order(hass: HomeAssistant):
     data = PCAData(hass)
     # Simulate parser adding RCD groups and circuits
     data.rcd_groups.append({"label": "RCD-A", "id": "rcd_a", "type": "RCD", "protects": ["1F1", "1F2", "1F3"]})
@@ -71,7 +71,7 @@ async def rcd_grouping_containers_are_mutable_and_preserve_order(hass: HomeAssis
     assert data.rcd_to_circuits["RCD-B"] == ["2F7", "3F11"]
 
 @pytest.mark.asyncio
-async def workflow_fields_change_as_expected(hass: HomeAssistant):
+async def test_workflow_fields_change_as_expected(hass: HomeAssistant):
     data = PCAData(hass)
     data.workflow_active = True
     data.workflow_queue = ["1F1", "1F2"]
@@ -89,4 +89,3 @@ async def workflow_fields_change_as_expected(hass: HomeAssistant):
     data.workflow_queue = []
     assert data.workflow_active is False
     assert data.workflow_queue == []
-
