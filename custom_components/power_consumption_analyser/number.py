@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.components.number import NumberEntity
 from .const import DOMAIN, OPT_MEASURE_DURATION_S
@@ -49,4 +48,3 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     # Stash entry to allow persisting options from entity
     setattr(hass.data[DOMAIN], "config_entry", entry)
     async_add_entities([MeasureDurationNumber(data)], True)
-

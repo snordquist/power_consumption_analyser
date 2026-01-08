@@ -12,6 +12,14 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN
 from .model import PCAData
+from .strategies.base import MeasurementWindow
+from .strategies.average import AverageStrategy
+from .strategies.median import MedianStrategy
+
+STRATEGIES = {
+    "average": AverageStrategy(),
+    "median": MedianStrategy(),
+}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
@@ -116,17 +124,21 @@ class CircuitMeasureSwitch(SwitchEntity):
 
         samples = self.data.measure_samples.get(self._circuit_id, [])
         baseline = self.data.measure_baseline.get(self._circuit_id, 0.0)
-        avg_untracked = mean(samples) if samples else _current_untracked(self.hass, self.data)
-        effect = baseline - avg_untracked
+        on_win = MeasurementWindow(baseline=baseline, samples=[baseline])
+        off_win = MeasurementWindow(baseline=baseline, samples=samples or [ _current_untracked(self.hass, self.data) ])
+        strat = STRATEGIES.get(self.data.effect_strategy, STRATEGIES["average"])
+        res = strat.compute(on_win, off_win)
+        effect = float(res.get("effect", 0.0))
         self.data.measure_results[self._circuit_id] = effect
         # Record history
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "effect": round(effect, 2),
             "baseline": round(baseline, 2),
-            "avg_untracked": round(avg_untracked, 2),
+            "avg_untracked": round((mean(samples) if samples else baseline), 2),
             "samples": len(samples),
             "duration_s": self.data.measure_duration_s,
+            "strategy": getattr(strat, "key", "average"),
         }
         hist = self.data.measure_history.setdefault(self._circuit_id, [])
         hist.append(entry)
@@ -143,7 +155,7 @@ class CircuitMeasureSwitch(SwitchEntity):
         self.hass.bus.async_fire(f"{DOMAIN}.measure_finished", {
             "circuit_id": self._circuit_id,
             "baseline": baseline,
-            "avg_untracked": avg_untracked,
+            "avg_untracked": mean(samples) if samples else baseline,
             "effect": effect,
             "samples": len(samples),
         })

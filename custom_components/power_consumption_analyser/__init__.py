@@ -107,6 +107,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Apply options and listen for updates
     _apply_options_to_data(data, entry)
+    # Load effect strategy from options if present
+    try:
+        from .const import OPT_EFFECT_STRATEGY
+        data.effect_strategy = entry.options.get(OPT_EFFECT_STRATEGY, data.effect_strategy)
+    except Exception:
+        pass
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     # Listen for measure_finished to drive workflow steps

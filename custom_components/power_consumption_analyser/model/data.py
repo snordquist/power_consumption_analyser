@@ -42,6 +42,7 @@ class PCAData:
         # History of measurements per circuit
         self.measure_history: Dict[str, List[dict]] = {}
         self.measure_history_max: int = 50
+        self.effect_strategy: str = "average"
         # Guided workflow state
         self.workflow_active: bool = False
         self.workflow_queue: List[str] = []
